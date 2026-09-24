@@ -102,12 +102,14 @@ fun LiquidSettingsScreen(
     diagnosticLoggingEnabled: Boolean,
     framePeriodMillis: Int,
     captureWidth: Int,
+    barHeightDp: Int,
     onGlassBarChange: (Boolean) -> Unit,
     onControlAvoidanceChange: (Boolean) -> Unit,
     onDynamicBackdropChange: (Boolean) -> Unit,
     onDiagnosticLoggingChange: (Boolean) -> Unit,
     onFramePeriodChange: (Int) -> Unit,
     onCaptureWidthChange: (Int) -> Unit,
+    onBarHeightChange: (Int) -> Unit,
     onRestartDouyin: () -> Unit,
     onRestartDaemon: () -> Unit,
     onExportDiagnostics: () -> Unit,
@@ -163,6 +165,17 @@ fun LiquidSettingsScreen(
                 enabled = glassBarEnabled,
                 selected = dynamicBackdropEnabled && glassBarEnabled,
                 onSelected = onDynamicBackdropChange,
+            )
+            SettingsDivider()
+            SettingsSliderRow(
+                icon = Icons.Rounded.Home,
+                title = "底栏高度",
+                valueFormatter = { "${it}dp" },
+                subtitleProvider = ::barHeightSubtitle,
+                choices = ModuleSettingsStore.BarHeightChoices,
+                selectedValue = barHeightDp,
+                enabled = glassBarEnabled,
+                onValueFinished = onBarHeightChange,
             )
         }
 
@@ -244,6 +257,15 @@ private fun captureWidthSubtitle(value: Int): String = when (value) {
     480 -> "均衡 · 推荐"
     560 -> "偏清晰"
     640 -> "清晰 · 耗电"
+    else -> "自定义"
+}
+
+private fun barHeightSubtitle(value: Int): String = when (value) {
+    64 -> "标准高度"
+    58 -> "略薄"
+    52 -> "纤薄 · 推荐"
+    46 -> "更纤薄"
+    40 -> "极薄"
     else -> "自定义"
 }
 
