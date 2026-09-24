@@ -59,6 +59,7 @@ import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.SwapVert
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -103,6 +104,7 @@ fun LiquidSettingsScreen(
     framePeriodMillis: Int,
     captureWidth: Int,
     barHeightDp: Int,
+    barVerticalOffsetDp: Int,
     onGlassBarChange: (Boolean) -> Unit,
     onControlAvoidanceChange: (Boolean) -> Unit,
     onDynamicBackdropChange: (Boolean) -> Unit,
@@ -110,6 +112,7 @@ fun LiquidSettingsScreen(
     onFramePeriodChange: (Int) -> Unit,
     onCaptureWidthChange: (Int) -> Unit,
     onBarHeightChange: (Int) -> Unit,
+    onBarVerticalOffsetChange: (Int) -> Unit,
     onRestartDouyin: () -> Unit,
     onRestartDaemon: () -> Unit,
     onExportDiagnostics: () -> Unit,
@@ -176,6 +179,23 @@ fun LiquidSettingsScreen(
                 selectedValue = barHeightDp,
                 enabled = glassBarEnabled,
                 onValueFinished = onBarHeightChange,
+            )
+            SettingsDivider()
+            SettingsSliderRow(
+                icon = Icons.Rounded.SwapVert,
+                title = "整体上下位置",
+                valueFormatter = { value ->
+                    when {
+                        value > 0 -> "+${value}dp（下移）"
+                        value < 0 -> "${value}dp（上移）"
+                        else -> "0dp（默认）"
+                    }
+                },
+                subtitleProvider = ::barVerticalOffsetSubtitle,
+                choices = ModuleSettingsStore.BarVerticalOffsetChoices,
+                selectedValue = barVerticalOffsetDp,
+                enabled = glassBarEnabled,
+                onValueFinished = onBarVerticalOffsetChange,
             )
         }
 
@@ -267,6 +287,13 @@ private fun barHeightSubtitle(value: Int): String = when (value) {
     46 -> "更纤薄"
     40 -> "极薄"
     else -> "自定义"
+}
+
+private fun barVerticalOffsetSubtitle(value: Int): String = when {
+    value > 0 -> "整体下移 ${value}dp（共 ${value / 5} 档）"
+    value < 0 -> "整体上移 ${-value}dp（共 ${-value / 5} 档）"
+    else -> "默认位置"
+}
 }
 
 @Composable
