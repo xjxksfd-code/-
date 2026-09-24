@@ -294,7 +294,6 @@ private fun barVerticalOffsetSubtitle(value: Int): String = when {
     value < 0 -> "整体上移 ${-value}dp（共 ${-value / 5} 档）"
     else -> "默认位置"
 }
-}
 
 @Composable
 private fun SettingsPanel(
