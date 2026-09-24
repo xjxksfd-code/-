@@ -54,6 +54,7 @@ class ModuleStatusActivity : ComponentActivity() {
                     framePeriodMillis = settings.framePeriodMillis,
                     captureWidth = settings.captureWidth,
                     barHeightDp = settings.barHeightDp,
+                    barVerticalOffsetDp = settings.barVerticalOffsetDp,
                     onGlassBarChange = { updateSettings(settings.copy(glassBarEnabled = it)) },
                     onControlAvoidanceChange = {
                         updateSettings(settings.copy(controlAvoidanceEnabled = it))
@@ -72,6 +73,9 @@ class ModuleStatusActivity : ComponentActivity() {
                     },
                     onBarHeightChange = {
                         updateSettings(settings.copy(barHeightDp = it))
+                    },
+                    onBarVerticalOffsetChange = {
+                        updateSettings(settings.copy(barVerticalOffsetDp = it))
                     },
                     onRestartDouyin = ::forceStopDouyin,
                     onRestartDaemon = ::restartDaemon,
