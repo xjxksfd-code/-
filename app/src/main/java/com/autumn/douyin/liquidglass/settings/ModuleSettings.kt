@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicLong
 
 private const val PreferredFramePeriodMillis = 17
 private const val PreferredCaptureWidth = 480
+private const val PreferredBarHeightDp = 64
 
 data class ModuleSettings(
     val glassBarEnabled: Boolean,
@@ -26,6 +27,7 @@ data class ModuleSettings(
     val diagnosticLoggingEnabled: Boolean,
     val framePeriodMillis: Int,
     val captureWidth: Int,
+    val barHeightDp: Int,
     val revision: Long,
 ) {
     fun withRevision(nextRevision: Long): ModuleSettings = copy(revision = nextRevision)
@@ -38,6 +40,7 @@ data class ModuleSettings(
             diagnosticLoggingEnabled = false,
             framePeriodMillis = PreferredFramePeriodMillis,
             captureWidth = PreferredCaptureWidth,
+            barHeightDp = PreferredBarHeightDp,
             revision = 0L,
         )
     }
@@ -54,6 +57,7 @@ object ModuleSettingsStore {
     private const val KeyDiagnosticLogging = "diagnostic_logging_enabled"
     private const val KeyFramePeriod = "frame_period_millis"
     private const val KeyCaptureWidth = "capture_width"
+    private const val KeyBarHeightDp = "bar_height_dp"
     private const val KeyRevision = "revision"
 
     const val ColumnGlassBar = "glass_bar_enabled"
@@ -62,12 +66,15 @@ object ModuleSettingsStore {
     const val ColumnDiagnosticLogging = "diagnostic_logging_enabled"
     const val ColumnFramePeriod = "frame_period_millis"
     const val ColumnCaptureWidth = "capture_width"
+    const val ColumnBarHeightDp = "bar_height_dp"
     const val ColumnRevision = "revision"
 
     val FramePeriodChoices = listOf(8, 11, 17, 22, 33)
     val CaptureWidthChoices = listOf(320, 400, 480, 560, 640)
+    val BarHeightChoices = listOf(64, 58, 52, 46, 40)
     val DefaultFramePeriod = PreferredFramePeriodMillis
     val DefaultCaptureWidth = PreferredCaptureWidth
+    val DefaultBarHeightDp = PreferredBarHeightDp
 
     private val revisionSource = AtomicLong(0)
 
@@ -86,6 +93,10 @@ object ModuleSettingsStore {
                 KeyCaptureWidth,
                 DefaultCaptureWidth,
             ),
+            barHeightDp = preferences.getInt(
+                KeyBarHeightDp,
+                DefaultBarHeightDp,
+            ),
             revision = preferences.getLong(KeyRevision, 0L),
         )
         revisionSource.updateAndGet { current -> maxOf(current, settings.revision) }
@@ -101,6 +112,7 @@ object ModuleSettingsStore {
             .putBoolean(KeyDiagnosticLogging, next.diagnosticLoggingEnabled)
             .putInt(KeyFramePeriod, next.framePeriodMillis)
             .putInt(KeyCaptureWidth, next.captureWidth)
+            .putInt(KeyBarHeightDp, next.barHeightDp)
             .putLong(KeyRevision, next.revision)
             .apply()
         context.contentResolver.notifyChange(SettingsUri, null)
@@ -115,6 +127,7 @@ object ModuleSettingsStore {
             ColumnDiagnosticLogging,
             ColumnFramePeriod,
             ColumnCaptureWidth,
+            ColumnBarHeightDp,
             ColumnRevision,
         )
     ).apply {
@@ -126,6 +139,7 @@ object ModuleSettingsStore {
                 settings.diagnosticLoggingEnabled,
                 settings.framePeriodMillis,
                 settings.captureWidth,
+                settings.barHeightDp,
                 settings.revision,
             )
         )
@@ -138,11 +152,12 @@ object ModuleSettingsStore {
         val diagnosticLogging = current.getColumnIndex(ColumnDiagnosticLogging)
         val framePeriod = current.getColumnIndex(ColumnFramePeriod)
         val captureWidth = current.getColumnIndex(ColumnCaptureWidth)
+        val barHeightDp = current.getColumnIndex(ColumnBarHeightDp)
         val revision = current.getColumnIndex(ColumnRevision)
         if (!current.moveToFirst() ||
             glassBar < 0 || controlAvoidance < 0 || dynamicBackdrop < 0 ||
             diagnosticLogging < 0 || revision < 0
-            || framePeriod < 0 || captureWidth < 0
+            || framePeriod < 0 || captureWidth < 0 || barHeightDp < 0
         ) {
             return null
         }
@@ -153,6 +168,7 @@ object ModuleSettingsStore {
             diagnosticLoggingEnabled = current.getInt(diagnosticLogging) != 0,
             framePeriodMillis = current.getInt(framePeriod),
             captureWidth = current.getInt(captureWidth),
+            barHeightDp = current.getInt(barHeightDp),
             revision = current.getLong(revision),
         )
     }
@@ -164,6 +180,7 @@ object ModuleSettingsStore {
         put(KeyDiagnosticLogging, settings.diagnosticLoggingEnabled.toString())
         put(KeyFramePeriod, settings.framePeriodMillis.toString())
         put(KeyCaptureWidth, settings.captureWidth.toString())
+        put(KeyBarHeightDp, settings.barHeightDp.toString())
         put(KeyRevision, settings.revision.toString())
     }.storeToString()
 
@@ -186,6 +203,10 @@ object ModuleSettingsStore {
                 KeyCaptureWidth,
                 DefaultCaptureWidth,
             ),
+            barHeightDp = properties.getIntProperty(
+                KeyBarHeightDp,
+                DefaultBarHeightDp,
+            ),
             revision = properties.getProperty(KeyRevision)?.toLongOrNull() ?: return null,
         )
     }
@@ -197,6 +218,7 @@ object ModuleSettingsStore {
         put(ColumnDiagnosticLogging, settings.diagnosticLoggingEnabled)
         put(ColumnFramePeriod, settings.framePeriodMillis)
         put(ColumnCaptureWidth, settings.captureWidth)
+        put(ColumnBarHeightDp, settings.barHeightDp)
         put(ColumnRevision, settings.revision)
     }
 
