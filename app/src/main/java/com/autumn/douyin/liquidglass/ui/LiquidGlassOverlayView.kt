@@ -46,6 +46,7 @@ import androidx.compose.material.icons.rounded.People
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -79,6 +80,7 @@ import com.autumn.douyin.liquidglass.component.rememberFloatingGlassStyle
 import com.autumn.douyin.liquidglass.ModuleLog
 import com.autumn.douyin.liquidglass.root.CompositeFrameProvider
 import com.autumn.douyin.liquidglass.settings.ModuleSettings
+import com.autumn.douyin.liquidglass.settings.ModuleSettingsStore
 import com.autumn.douyin.liquidglass.theme.DemoMiuixTheme
 import top.yukonga.miuix.kmp.blur.Backdrop
 import top.yukonga.miuix.kmp.basic.Icon
@@ -118,6 +120,7 @@ class LiquidGlassOverlayView(
     private var lastCapturePaddingPx = 0f
     private var dynamicBackdropEnabled: Boolean
     private var controlAvoidanceEnabled: Boolean
+    private var barHeightDp = mutableStateOf(ModuleSettingsStore.DefaultBarHeightDp)
     private var currentTouchInsideContent = false
     private val delayedBackdropStart = Runnable {
         if (dynamicBackdropEnabled && desiredNativeBarPresent && visibility != View.GONE) {
@@ -141,6 +144,7 @@ class LiquidGlassOverlayView(
     init {
         dynamicBackdropEnabled = initialSettings.dynamicBackdropEnabled
         controlAvoidanceEnabled = initialSettings.controlAvoidanceEnabled
+        barHeightDp.value = initialSettings.barHeightDp
     }
 
     override val lifecycle: Lifecycle
@@ -175,6 +179,7 @@ class LiquidGlassOverlayView(
                 overlayView = this@LiquidGlassOverlayView,
                 backdrop = backdrop,
                 expandContentToWindow = expandContentToWindow,
+                barHeightDp = { barHeightDp.value },
             )
         }
         addView(composeView)
@@ -269,6 +274,10 @@ class LiquidGlassOverlayView(
             } else {
                 BottomAdjacentControlAvoidance.stop(mainWindowView)
             }
+        }
+
+        if (settings.barHeightDp != barHeightDp.value) {
+            barHeightDp.value = settings.barHeightDp
         }
     }
 
@@ -486,8 +495,10 @@ private fun LiquidGlassOverlayContent(
     overlayView: LiquidGlassOverlayView,
     backdrop: DynamicBitmapBackdrop,
     expandContentToWindow: Boolean,
+    barHeightDp: () -> Int,
 ) {
     val density = LocalDensity.current
+    val activeBarHeightDp = barHeightDp()
     val tabs = remember {
         listOf(
             DouyinTab("首页", Icons.Rounded.Cottage),
@@ -551,6 +562,7 @@ private fun LiquidGlassOverlayContent(
                     backdrop = backdrop,
                     glassStyle = glassStyle,
                     tabsCount = tabs.size,
+                    barHeightDp = activeBarHeightDp,
                     isBlurEnabled = true,
                 ) {
                     tabs.forEachIndexed { index, tab ->
