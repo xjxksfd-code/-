@@ -1,0 +1,2 @@
+-keep class com.autumn.douyin.liquidglass.hook.LiquidGlassHook { *; }
+-keep class com.autumn.douyin.liquidglass.root.CompositeFrameDaemon { *; }
