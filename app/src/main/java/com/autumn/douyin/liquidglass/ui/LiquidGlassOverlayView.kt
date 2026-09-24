@@ -121,6 +121,7 @@ class LiquidGlassOverlayView(
     private var dynamicBackdropEnabled: Boolean
     private var controlAvoidanceEnabled: Boolean
     private var barHeightDp = mutableStateOf(ModuleSettingsStore.DefaultBarHeightDp)
+    private var barVerticalOffsetDp = mutableStateOf(ModuleSettingsStore.DefaultBarVerticalOffsetDp)
     private var currentTouchInsideContent = false
     private val delayedBackdropStart = Runnable {
         if (dynamicBackdropEnabled && desiredNativeBarPresent && visibility != View.GONE) {
@@ -145,6 +146,7 @@ class LiquidGlassOverlayView(
         dynamicBackdropEnabled = initialSettings.dynamicBackdropEnabled
         controlAvoidanceEnabled = initialSettings.controlAvoidanceEnabled
         barHeightDp.value = initialSettings.barHeightDp
+        barVerticalOffsetDp.value = initialSettings.barVerticalOffsetDp
     }
 
     override val lifecycle: Lifecycle
@@ -180,6 +182,7 @@ class LiquidGlassOverlayView(
                 backdrop = backdrop,
                 expandContentToWindow = expandContentToWindow,
                 barHeightDp = { barHeightDp.value },
+                barVerticalOffsetDp = { barVerticalOffsetDp.value },
             )
         }
         addView(composeView)
@@ -278,6 +281,10 @@ class LiquidGlassOverlayView(
 
         if (settings.barHeightDp != barHeightDp.value) {
             barHeightDp.value = settings.barHeightDp
+        }
+
+        if (settings.barVerticalOffsetDp != barVerticalOffsetDp.value) {
+            barVerticalOffsetDp.value = settings.barVerticalOffsetDp
         }
     }
 
@@ -496,9 +503,11 @@ private fun LiquidGlassOverlayContent(
     backdrop: DynamicBitmapBackdrop,
     expandContentToWindow: Boolean,
     barHeightDp: () -> Int,
+    barVerticalOffsetDp: () -> Int,
 ) {
     val density = LocalDensity.current
     val activeBarHeightDp = barHeightDp()
+    val activeBarVerticalOffsetDp = barVerticalOffsetDp()
     val tabs = remember {
         listOf(
             DouyinTab("首页", Icons.Rounded.Cottage),
@@ -514,8 +523,6 @@ private fun LiquidGlassOverlayContent(
                 .fillMaxWidth()
                 .height(LIQUID_OVERLAY_HEIGHT_DP.dp),
         ) {
-            val plusButtonSize = 64.dp
-            val groupGap = 12.dp
             val reservedHorizontalPadding =
                 if (expandContentToWindow) {
                     (LIQUID_OVERLAY_EDGE_CONTENT_INSET_DP * 2).dp
@@ -523,7 +530,7 @@ private fun LiquidGlassOverlayContent(
                     16.dp
                 }
             val availableCapsuleWidth =
-                maxWidth - plusButtonSize - groupGap - reservedHorizontalPadding
+                maxWidth - reservedHorizontalPadding
             val capsuleWidth = if (expandContentToWindow) {
                 availableCapsuleWidth
             } else {
@@ -537,7 +544,7 @@ private fun LiquidGlassOverlayContent(
                     Modifier
                 })
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 11.dp)
+                    .padding(bottom = (11 + activeBarVerticalOffsetDp).dp)
                     .padding(
                         horizontal = if (expandContentToWindow) {
                             LIQUID_OVERLAY_EDGE_CONTENT_INSET_DP.dp
@@ -552,7 +559,7 @@ private fun LiquidGlassOverlayContent(
                             capturePaddingPx = capturePaddingPx,
                         )
                     },
-                horizontalArrangement = Arrangement.spacedBy(groupGap),
+                horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 FloatingBottomBar(
@@ -601,13 +608,6 @@ private fun LiquidGlassOverlayContent(
                         }
                     }
                 }
-
-                LiquidPlusButton(
-                    backdrop = backdrop,
-                    glassStyle = glassStyle,
-                    onClick = controller::clickPlus,
-                    onLongClick = controller::longClickPlus,
-                )
             }
         }
     }
@@ -643,56 +643,6 @@ private fun MessageCountBadge(
             lineHeight = 10.sp,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
-        )
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun LiquidPlusButton(
-    backdrop: Backdrop,
-    glassStyle: FloatingGlassStyle,
-    onClick: () -> Unit,
-    onLongClick: () -> Boolean,
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.94f else 1f,
-        label = "plus-scale",
-    )
-
-    Box(
-        modifier = Modifier
-            .size(64.dp)
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
-            .dropShadow(
-                shape = CircleShape,
-                shadow = Shadow(
-                    radius = 10.dp,
-                    color = androidx.compose.ui.graphics.Color.Black,
-                    alpha = glassStyle.shadowColor.alpha,
-                ),
-            )
-            .combinedClickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onClick,
-                onLongClick = { onLongClick() },
-            )
-            .drawFloatingGlassBackdrop(
-                backdrop = backdrop,
-                shape = CircleShape,
-                style = glassStyle,
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            imageVector = Icons.Rounded.Add,
-            contentDescription = null,
         )
     }
 }
