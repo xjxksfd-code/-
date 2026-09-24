@@ -1,0 +1,13 @@
+.gradle/
+.kotlin/
+build/
+local.properties
+*.keystore
+*.jks
+*.apk
+!Douyin-Liquid-Glass-v1.0.0-release.apk
+*.idsig
+*.log
+.idea/
+*.iml
+.DS_Store
