@@ -230,9 +230,11 @@ fun FloatingBottomBar(
     backdrop: Backdrop,
     glassStyle: FloatingGlassStyle,
     tabsCount: Int,
+    barHeightDp: Int = 64,
     isBlurEnabled: Boolean = true,
     content: @Composable RowScope.() -> Unit
 ) {
+    val innerBarHeightDp = (barHeightDp - 8).coerceAtLeast(24)
     val isInDark = isInDarkTheme()
     val pillShape = remember { CircleShape }
     val accentColor = MiuixTheme.colorScheme.primary
@@ -385,7 +387,7 @@ fun FloatingBottomBar(
                     }
                 )
                 .then(if (isBlurEnabled) interactiveHighlight.modifier else Modifier)
-                .height(64.dp)
+                .height(barHeightDp.dp)
                 .padding(4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -421,7 +423,7 @@ fun FloatingBottomBar(
                             onDrawSurface = { drawRect(containerColor) },
                         )
                         .then(interactiveHighlight.modifier)
-                        .height(56.dp)
+                        .height(innerBarHeightDp.dp)
                         .padding(horizontal = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     content = content
@@ -477,7 +479,7 @@ fun FloatingBottomBar(
                                 alpha = dampedDragAnimation.pressProgress,
                             )
                         }
-                        .height(56.dp)
+                        .height(innerBarHeightDp.dp)
                         .width(tabWidthDp)
                 )
             } else {
@@ -491,7 +493,7 @@ fun FloatingBottomBar(
                         .then(dampedDragAnimation.modifier)
                         .clip(pillShape)
                         .background(accentColor.copy(alpha = 0.15f), pillShape)
-                        .height(56.dp)
+                        .height(innerBarHeightDp.dp)
                         .width(tabWidthDp)
                 )
             }
