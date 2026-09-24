@@ -53,6 +53,7 @@ class ModuleStatusActivity : ComponentActivity() {
                     diagnosticLoggingEnabled = settings.diagnosticLoggingEnabled,
                     framePeriodMillis = settings.framePeriodMillis,
                     captureWidth = settings.captureWidth,
+                    barHeightDp = settings.barHeightDp,
                     onGlassBarChange = { updateSettings(settings.copy(glassBarEnabled = it)) },
                     onControlAvoidanceChange = {
                         updateSettings(settings.copy(controlAvoidanceEnabled = it))
@@ -68,6 +69,9 @@ class ModuleStatusActivity : ComponentActivity() {
                     },
                     onCaptureWidthChange = {
                         updateSettings(settings.copy(captureWidth = it))
+                    },
+                    onBarHeightChange = {
+                        updateSettings(settings.copy(barHeightDp = it))
                     },
                     onRestartDouyin = ::forceStopDouyin,
                     onRestartDaemon = ::restartDaemon,
