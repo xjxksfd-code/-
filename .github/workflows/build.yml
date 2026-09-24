@@ -21,6 +21,8 @@ permissions:
 
 env:
   GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8
+  ANDROID_HOME: /usr/local/lib/android/sdk
+  ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
 
 jobs:
   build:
@@ -38,17 +40,17 @@ jobs:
           java-version: '21'
           cache: gradle
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Accept Android SDK licenses
-        run: yes | sdkmanager --licenses >/dev/null 2>&1 || true
-
       - name: Install Android SDK packages
         shell: bash
         run: |
           set -o pipefail
-          sdkmanager --install "platform-tools" "platforms;android-37.0" "build-tools;37.0.0"
+          SDKMGR="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMGR" ]; then
+            SDKMGR="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f 2>/dev/null | head -1)"
+          fi
+          echo "Using sdkmanager: $SDKMGR"
+          yes | "$SDKMGR" --licenses >/dev/null 2>&1 || true
+          "$SDKMGR" --install "platform-tools" "platforms;android-37.0" "build-tools;37.0.0"
           echo '--- installed platforms ---'
           ls "$ANDROID_HOME/platforms"
           echo '--- installed build-tools ---'
