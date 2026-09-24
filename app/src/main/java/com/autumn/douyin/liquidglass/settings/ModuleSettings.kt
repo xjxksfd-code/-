@@ -19,6 +19,7 @@ import java.util.concurrent.atomic.AtomicLong
 private const val PreferredFramePeriodMillis = 17
 private const val PreferredCaptureWidth = 480
 private const val PreferredBarHeightDp = 64
+private const val PreferredBarVerticalOffsetDp = 0
 
 data class ModuleSettings(
     val glassBarEnabled: Boolean,
@@ -28,6 +29,7 @@ data class ModuleSettings(
     val framePeriodMillis: Int,
     val captureWidth: Int,
     val barHeightDp: Int,
+    val barVerticalOffsetDp: Int,
     val revision: Long,
 ) {
     fun withRevision(nextRevision: Long): ModuleSettings = copy(revision = nextRevision)
@@ -41,6 +43,7 @@ data class ModuleSettings(
             framePeriodMillis = PreferredFramePeriodMillis,
             captureWidth = PreferredCaptureWidth,
             barHeightDp = PreferredBarHeightDp,
+            barVerticalOffsetDp = PreferredBarVerticalOffsetDp,
             revision = 0L,
         )
     }
@@ -58,6 +61,7 @@ object ModuleSettingsStore {
     private const val KeyFramePeriod = "frame_period_millis"
     private const val KeyCaptureWidth = "capture_width"
     private const val KeyBarHeightDp = "bar_height_dp"
+    private const val KeyBarVerticalOffsetDp = "bar_vertical_offset_dp"
     private const val KeyRevision = "revision"
 
     const val ColumnGlassBar = "glass_bar_enabled"
@@ -67,14 +71,17 @@ object ModuleSettingsStore {
     const val ColumnFramePeriod = "frame_period_millis"
     const val ColumnCaptureWidth = "capture_width"
     const val ColumnBarHeightDp = "bar_height_dp"
+    const val ColumnBarVerticalOffsetDp = "bar_vertical_offset_dp"
     const val ColumnRevision = "revision"
 
     val FramePeriodChoices = listOf(8, 11, 17, 22, 33)
     val CaptureWidthChoices = listOf(320, 400, 480, 560, 640)
     val BarHeightChoices = listOf(64, 58, 52, 46, 40)
+    val BarVerticalOffsetChoices = listOf(-20, -15, -10, -5, 0, 5, 10, 15, 20)
     val DefaultFramePeriod = PreferredFramePeriodMillis
     val DefaultCaptureWidth = PreferredCaptureWidth
     val DefaultBarHeightDp = PreferredBarHeightDp
+    val DefaultBarVerticalOffsetDp = PreferredBarVerticalOffsetDp
 
     private val revisionSource = AtomicLong(0)
 
@@ -97,6 +104,10 @@ object ModuleSettingsStore {
                 KeyBarHeightDp,
                 DefaultBarHeightDp,
             ),
+            barVerticalOffsetDp = preferences.getInt(
+                KeyBarVerticalOffsetDp,
+                DefaultBarVerticalOffsetDp,
+            ),
             revision = preferences.getLong(KeyRevision, 0L),
         )
         revisionSource.updateAndGet { current -> maxOf(current, settings.revision) }
@@ -113,6 +124,7 @@ object ModuleSettingsStore {
             .putInt(KeyFramePeriod, next.framePeriodMillis)
             .putInt(KeyCaptureWidth, next.captureWidth)
             .putInt(KeyBarHeightDp, next.barHeightDp)
+            .putInt(KeyBarVerticalOffsetDp, next.barVerticalOffsetDp)
             .putLong(KeyRevision, next.revision)
             .apply()
         context.contentResolver.notifyChange(SettingsUri, null)
@@ -128,6 +140,7 @@ object ModuleSettingsStore {
             ColumnFramePeriod,
             ColumnCaptureWidth,
             ColumnBarHeightDp,
+            ColumnBarVerticalOffsetDp,
             ColumnRevision,
         )
     ).apply {
@@ -140,6 +153,7 @@ object ModuleSettingsStore {
                 settings.framePeriodMillis,
                 settings.captureWidth,
                 settings.barHeightDp,
+                settings.barVerticalOffsetDp,
                 settings.revision,
             )
         )
@@ -153,11 +167,13 @@ object ModuleSettingsStore {
         val framePeriod = current.getColumnIndex(ColumnFramePeriod)
         val captureWidth = current.getColumnIndex(ColumnCaptureWidth)
         val barHeightDp = current.getColumnIndex(ColumnBarHeightDp)
+        val barVerticalOffsetDp = current.getColumnIndex(ColumnBarVerticalOffsetDp)
         val revision = current.getColumnIndex(ColumnRevision)
         if (!current.moveToFirst() ||
             glassBar < 0 || controlAvoidance < 0 || dynamicBackdrop < 0 ||
             diagnosticLogging < 0 || revision < 0
             || framePeriod < 0 || captureWidth < 0 || barHeightDp < 0
+            || barVerticalOffsetDp < 0
         ) {
             return null
         }
@@ -169,6 +185,7 @@ object ModuleSettingsStore {
             framePeriodMillis = current.getInt(framePeriod),
             captureWidth = current.getInt(captureWidth),
             barHeightDp = current.getInt(barHeightDp),
+            barVerticalOffsetDp = current.getInt(barVerticalOffsetDp),
             revision = current.getLong(revision),
         )
     }
@@ -181,6 +198,7 @@ object ModuleSettingsStore {
         put(KeyFramePeriod, settings.framePeriodMillis.toString())
         put(KeyCaptureWidth, settings.captureWidth.toString())
         put(KeyBarHeightDp, settings.barHeightDp.toString())
+        put(KeyBarVerticalOffsetDp, settings.barVerticalOffsetDp.toString())
         put(KeyRevision, settings.revision.toString())
     }.storeToString()
 
@@ -207,6 +225,10 @@ object ModuleSettingsStore {
                 KeyBarHeightDp,
                 DefaultBarHeightDp,
             ),
+            barVerticalOffsetDp = properties.getIntProperty(
+                KeyBarVerticalOffsetDp,
+                DefaultBarVerticalOffsetDp,
+            ),
             revision = properties.getProperty(KeyRevision)?.toLongOrNull() ?: return null,
         )
     }
@@ -219,6 +241,7 @@ object ModuleSettingsStore {
         put(ColumnFramePeriod, settings.framePeriodMillis)
         put(ColumnCaptureWidth, settings.captureWidth)
         put(ColumnBarHeightDp, settings.barHeightDp)
+        put(ColumnBarVerticalOffsetDp, settings.barVerticalOffsetDp)
         put(ColumnRevision, settings.revision)
     }
 
