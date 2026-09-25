@@ -8,12 +8,14 @@ import android.app.Activity
 import android.content.Context
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Region
 import android.os.Bundle
 import android.os.Build
 import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewTreeObserver
 import android.view.WindowManager
 import android.view.animation.PathInterpolator
 import android.widget.FrameLayout
@@ -137,6 +139,7 @@ class LiquidGlassOverlayView(
      */
     internal var baseWindowY: Int = 0
     private var currentTouchInsideContent = false
+    private var touchableRegionListener: ViewTreeObserver.OnComputeInternalInsetsListener? = null
     private val delayedBackdropStart = Runnable {
         if (dynamicBackdropEnabled && desiredNativeBarPresent && visibility != View.GONE) {
             compositeFrameProvider.start()
@@ -273,13 +276,67 @@ class LiquidGlassOverlayView(
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         Log.i("DLG_VOFFSET", "onAttachedToWindow fired")
+        setupTouchableRegion()
         // View 已真正加入 WindowManager，此时才能安全地修改 LayoutParams.y。
         // 用 post{} 确保在窗口完成 attach 后再执行一次当前位置应用。
         post { applyWindowVerticalOffset() }
     }
 
+    /**
+     * Restrict the window's *touchable* area to the visible capsule only.
+     *
+     * The overlay window is intentionally much taller than the capsule (96dp +
+     * 2 * slack) so the content can be slid vertically inside it. That means the
+     * window rect itself covers a large part of the screen, and because the
+     * window is the input target, every DOWN landing inside that big rect is
+     * delivered to this window and never reaches the Douyin feed below it --
+     * returning false from dispatchTouchEvent does NOT re-route the event to the
+     * window underneath. That is what broke swipe-to-next-video and the progress
+     * bar drag.
+     *
+     * Declaring an explicit touchable region via OnComputeInternalInsetsListener
+     * makes the WindowManager itself treat only the capsule as part of this
+     * window; touches outside it are routed straight to the app below.
+     */
+    private fun setupTouchableRegion() {
+        if (touchableRegionListener != null) return
+        val listener = ViewTreeObserver.OnComputeInternalInsetsListener { info ->
+            val region = lastCaptureRegion
+            if (region == null) {
+                // Before the capsule has been laid out we do NOT want to grab
+                // touches at all -- leave the region empty so the whole window is
+                // transparent to input and the feed keeps working.
+                info.setTouchableInsets(
+                    ViewTreeObserver.InternalInsetsInfo.TOUCHABLE_INSETS_REGION,
+                )
+                info.touchableRegion.setEmpty()
+                return@OnComputeInternalInsetsListener
+            }
+            val loc = IntArray(2)
+            getLocationOnScreen(loc)
+            val pad = lastCapturePaddingPx
+            val left = (loc[0] + region.left - pad).toInt()
+            val top = (loc[1] + region.top - pad).toInt()
+            val right = (loc[0] + region.right + pad).toInt()
+            val bottom = (loc[1] + region.bottom + pad).toInt()
+            info.setTouchableInsets(
+                ViewTreeObserver.InternalInsetsInfo.TOUCHABLE_INSETS_REGION,
+            )
+            info.touchableRegion.set(left, top, right, bottom)
+        }
+        touchableRegionListener = listener
+        viewTreeObserver.addOnComputeInternalInsetsListener(listener)
+        ModuleLog.info("touchable region listener installed")
+    }
+
     override fun onDetachedFromWindow() {
         BottomAdjacentControlAvoidance.stop(mainWindowView)
+        touchableRegionListener?.let { l ->
+            if (viewTreeObserver.isAlive) {
+                viewTreeObserver.removeOnComputeInternalInsetsListener(l)
+            }
+        }
+        touchableRegionListener = null
         val animator = presenceAnimator
         presenceAnimator = null
         animator?.cancel()
@@ -484,6 +541,8 @@ class LiquidGlassOverlayView(
     ) {
         lastCaptureRegion = localRegion
         lastCapturePaddingPx = capturePaddingPx
+        // Re-evaluate the touchable region with the fresh capsule bounds.
+        requestApplyInsets()
         val overlayPosition = IntArray(2)
         getLocationOnScreen(overlayPosition)
         if (controlAvoidanceEnabled && !avoidanceGeometryLocked) {
