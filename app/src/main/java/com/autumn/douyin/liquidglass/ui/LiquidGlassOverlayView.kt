@@ -101,7 +101,7 @@ internal const val LIQUID_OVERLAY_EDGE_CONTENT_INSET_DP = 16f
 // 需求二修复：胶囊顶部留白区（以及可能与其重叠的宿主进度条所在行）不参与触摸消费。
 // 从 contentRegion 顶部再向内收缩本值（dp），该条带内的触摸一律透传给下层窗口，
 // 避免悬浮窗用整块矩形把宿主进度条手势吞掉。
-internal const val LIQUID_OVERLAY_TOP_TOUCH_INSET_DP = 7f
+internal const val LIQUID_OVERLAY_TOP_TOUCH_INSET_DP = 30f
 // ⚠️ 诊断探针（临时）：为 true 时悬浮窗不消费任何触摸，全部透传给下层窗口。
 // 仅用于抓取宿主进度条真实坐标，验证完成后必须改回 false。
 internal const val LIQUID_OVERLAY_TOUCH_PROBE_PASSTHROUGH = false
