@@ -77,7 +77,7 @@ object ScreenCaptureExclusion {
                 transaction,
                 "setSkipScreenshot",
                 control,
-                true,
+                false, // 改为 false：截图/录屏时底栏保持可见
             )
             XposedHelpers.callMethod(transaction, "apply")
             clearFailure(view)
