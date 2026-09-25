@@ -323,14 +323,13 @@ class LiquidGlassOverlayView(
     }
 
     /**
-     * The overlay window is exactly [LIQUID_OVERLAY_HEIGHT_DP] tall and anchored to the
-     * bottom of the screen (gravity = BOTTOM). Any offset applied *inside* the Compose
-     * content (padding/offset) is clipped by that fixed 96dp window, so the capsule can
-     * never actually move up or down on screen. To make the "vertical position" slider
-     * visibly work we move the whole window instead, by updating its LayoutParams.y.
+     * 垂直位置滑条：不再移动窗口，而是把位移交给 Compose 内容层。
      *
-     * With gravity = BOTTOM, a *positive* LayoutParams.y pushes the window UP, so we
-     * negate the user value: positive -> move down, negative -> move up.
+     * 窗口用 gravity = BOTTOM / y = 0 固定贴在屏幕底，并且高度放大为
+     * [LIQUID_OVERLAY_HEIGHT_DP] + 2 * [LIQUID_OVERLAY_VERTICAL_SLACK_DP]，为内容平移留出
+     * 渲染表面（同时 clipChildren=false）。这里只更新 [barContentOffsetPx]，由内容层的
+     * Modifier.offset 真正完成平移，从而绕开 TYPE_APPLICATION_PANEL 子窗口底边被系统
+     * 硬钳制、导致下移无效的问题。
      */
     // 允许宿主 (LiquidGlassHook) 在 addView 之后从外部再应用一次，避免时序竞争。
     internal fun applyWindowVerticalOffset() {

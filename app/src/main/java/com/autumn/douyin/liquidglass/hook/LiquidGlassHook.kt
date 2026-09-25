@@ -24,6 +24,7 @@ import com.autumn.douyin.liquidglass.ui.CapturedLayerRegistry
 import com.autumn.douyin.liquidglass.ui.DynamicBitmapBackdrop
 import com.autumn.douyin.liquidglass.ui.LIQUID_OVERLAY_HORIZONTAL_ALLOWANCE_DP
 import com.autumn.douyin.liquidglass.ui.LIQUID_OVERLAY_HEIGHT_DP
+import com.autumn.douyin.liquidglass.ui.LIQUID_OVERLAY_VERTICAL_SLACK_DP
 import com.autumn.douyin.liquidglass.ui.LIQUID_OVERLAY_MAX_CONTENT_WIDTH_DP
 import com.autumn.douyin.liquidglass.ui.LIQUID_OVERLAY_MIN_CONTENT_WIDTH_DP
 import com.autumn.douyin.liquidglass.ui.LiquidGlassOverlayView
@@ -521,6 +522,7 @@ private fun calculateOverlayWindowGeometry(
             width = calculateFallbackOverlayWindowWidth(parentWidth, density),
             x = 0,
             baseY = fallbackOverlayBaseY(activity),
+            height = overlayWindowHeightPx(density),
             edgeToEdge = false,
         )
     }
@@ -553,13 +555,17 @@ private fun calculateOverlayWindowGeometry(
     // that bottom minus the window height.
     val overlayHeightPx = (LIQUID_OVERLAY_HEIGHT_DP * density).roundToInt()
     val baseY = (nativeBounds.bottom - overlayHeightPx).coerceAtLeast(0)
-    return OverlayWindowGeometry(width, centerOffset, baseY, edgeToEdge)
+    return OverlayWindowGeometry(width, overlayWindowHeightPx(density), centerOffset, baseY, edgeToEdge)
 }
 
 /**
  * Resting Y used when the native bottom bar bounds are unavailable. Mirrors the
  * Gravity.BOTTOM behavior: the window is flush with the bottom of the screen.
  */
+private fun overlayWindowHeightPx(density: Float): Int =
+    ((LIQUID_OVERLAY_HEIGHT_DP + LIQUID_OVERLAY_VERTICAL_SLACK_DP * 2) * density)
+        .roundToInt()
+
 private fun fallbackOverlayBaseY(activity: Activity): Int {
     val metrics = activity.resources.displayMetrics
     val overlayHeightPx = (LIQUID_OVERLAY_HEIGHT_DP * metrics.density).roundToInt()
