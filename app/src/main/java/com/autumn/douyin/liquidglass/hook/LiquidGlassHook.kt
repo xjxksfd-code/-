@@ -426,6 +426,10 @@ class LiquidGlassHook : IXposedHookLoadPackage {
                 overlay,
                 createOverlayLayoutParams(activity, overlayGeometry),
             )
+// 把窗口的静止位置交给 Overlay，供“整体上下位置”滑条基于它做偏移。
+            // 必须写在 addView 之后、applyWindowVerticalOffset() 之前，
+            // 否则首次应用会用到默认值 0。
+            overlay.baseWindowY = overlayGeometry.baseY
             // 新增：此时 layoutParams 才真正是 WindowManager.LayoutParams，
             // 保险起见再应用一次，避免任何时序竞争导致初始偏移丢失
             overlay.applyWindowVerticalOffset()
@@ -469,6 +473,7 @@ class LiquidGlassHook : IXposedHookLoadPackage {
 private data class OverlayWindowGeometry(
     val width: Int,
     val x: Int,
+    val baseY: Int,
     val edgeToEdge: Boolean,
 )
 
@@ -485,8 +490,15 @@ private fun createOverlayLayoutParams(
             WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
         PixelFormat.TRANSLUCENT,
     ).apply {
-        gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+        // Gravity.TOP + a computed baseY defines the resting position at the bottom
+        // of the screen. This (instead of Gravity.BOTTOM) is what gives the
+        // "vertical position" slider real travel on BOTH sides: with Gravity.BOTTOM
+        // the window is already flush with the screen bottom, so any attempt to push
+        // it further DOWN was clamped by the system, making every offset beyond ~20dp
+        // a no-op. With Gravity.TOP we can freely move the window up or down.
+        gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
         x = geometry.x
+        y = geometry.baseY
         setTitle("DouyinLiquidGlassOverlay")
         token = activity.window.decorView.windowToken
         windowAnimations = 0
@@ -506,6 +518,7 @@ private fun calculateOverlayWindowGeometry(
         return OverlayWindowGeometry(
             width = calculateFallbackOverlayWindowWidth(parentWidth, density),
             x = 0,
+            baseY = fallbackOverlayBaseY(activity),
             edgeToEdge = false,
         )
     }
@@ -532,7 +545,26 @@ private fun calculateOverlayWindowGeometry(
         "liquid overlay geometry native=$nativeBounds target=[left=$left,right=$right] " +
             "width=$width x=$centerOffset edgeToEdge=$edgeToEdge parentWidth=$parentWidth"
     }
-    return OverlayWindowGeometry(width, centerOffset, edgeToEdge)
+    // Resting position: the overlay window sits so that its BOTTOM edge lands on the
+    // native bottom bar's bottom edge (measured in the host window's coordinates).
+    // Because the window size is fixed at LIQUID_OVERLAY_HEIGHT_DP, baseY is simply
+    // that bottom minus the window height.
+    val overlayHeightPx = (LIQUID_OVERLAY_HEIGHT_DP * density).roundToInt()
+    val baseY = (nativeBounds.bottom - overlayHeightPx).coerceAtLeast(0)
+    return OverlayWindowGeometry(width, centerOffset, baseY, edgeToEdge)
+}
+
+/**
+ * Resting Y used when the native bottom bar bounds are unavailable. Mirrors the
+ * Gravity.BOTTOM behavior: the window is flush with the bottom of the screen.
+ */
+private fun fallbackOverlayBaseY(activity: Activity): Int {
+    val metrics = activity.resources.displayMetrics
+    val overlayHeightPx = (LIQUID_OVERLAY_HEIGHT_DP * metrics.density).roundToInt()
+    val screenHeightPx = activity.window.decorView.height
+        .takeIf { it > 0 }
+        ?: metrics.heightPixels
+    return (screenHeightPx - overlayHeightPx).coerceAtLeast(0)
 }
 
 private fun calculateFallbackOverlayWindowWidth(screenWidthPx: Int, density: Float): Int {

@@ -124,6 +124,14 @@ class LiquidGlassOverlayView(
     private var controlAvoidanceEnabled: Boolean
     private var barHeightDp = mutableStateOf(ModuleSettingsStore.DefaultBarHeightDp)
     private var barVerticalOffsetDp = mutableStateOf(ModuleSettingsStore.DefaultBarVerticalOffsetDp)
+
+    /**
+     * Resting window Y (in host-window coordinates) for the overlay window.
+     * Provided by LiquidGlassHook right after the window is added.
+     * With gravity = TOP this is the value that places the bottom bar at its
+     * natural position; the user offset is applied *relative* to it.
+     */
+    internal var baseWindowY: Int = 0
     private var currentTouchInsideContent = false
     private val delayedBackdropStart = Runnable {
         if (dynamicBackdropEnabled && desiredNativeBarPresent && visibility != View.GONE) {
@@ -335,7 +343,12 @@ class LiquidGlassOverlayView(
         }
         val offsetPx =
             (barVerticalOffsetDp.value * resources.displayMetrics.density).roundToInt()
-        val desiredY = -offsetPx
+        // Gravity.TOP: baseWindowY puts the bar at its natural position (bottom of the
+        // screen, taken from the native bar bounds). A positive user value must move the
+        // bar DOWN, which with Gravity.TOP means a LARGER y. Using base + offset (instead
+        // of the old Gravity.BOTTOM -offset trick) removes the system's bottom-edge clamp,
+        // so every slider step produces real, proportional travel.
+        val desiredY = baseWindowY + offsetPx
         Log.i(
             "DLG_VOFFSET",
             "APPLY desiredY=$desiredY offsetPx=$offsetPx yBefore=${params.y} gravity=${params.gravity}",
