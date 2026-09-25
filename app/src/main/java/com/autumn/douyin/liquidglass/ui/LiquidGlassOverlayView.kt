@@ -61,7 +61,6 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.roundToPx
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -545,8 +544,9 @@ private fun LiquidGlassOverlayContent(
             // the space that actually exists inside the window so the bar never
             // gets pushed out of view (which previously looked like "no effect").
             val restingBottomPaddingDp = 11
+            val overlayHeightDp = LIQUID_OVERLAY_HEIGHT_DP.toInt()
             val topHeadroomDp =
-                (LIQUID_OVERLAY_HEIGHT_DP - restingBottomPaddingDp - activeBarHeightDp)
+                (overlayHeightDp - restingBottomPaddingDp - activeBarHeightDp)
                     .coerceAtLeast(0)
             val bottomSlackDp = restingBottomPaddingDp
             val effectiveVerticalOffsetDp = activeBarVerticalOffsetDp
