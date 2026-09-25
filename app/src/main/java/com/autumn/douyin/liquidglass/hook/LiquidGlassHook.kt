@@ -427,7 +427,7 @@ class LiquidGlassHook : IXposedHookLoadPackage {
                 overlay,
                 createOverlayLayoutParams(activity, overlayGeometry),
             )
-// 把窗口的静止位置交给 Overlay，供“整体上下位置”滑条基于它做偏移。
+            // 把窗口的静止位置交给 Overlay，供“整体上下位置”滑条基于它做偏移。
             // 必须写在 addView 之后、applyWindowVerticalOffset() 之前，
             // 否则首次应用会用到默认值 0。
             overlay.baseWindowY = overlayGeometry.baseY

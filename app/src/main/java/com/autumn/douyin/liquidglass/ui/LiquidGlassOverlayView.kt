@@ -304,6 +304,7 @@ class LiquidGlassOverlayView(
         }
 
         val shouldAvoidControls = settings.controlAvoidanceEnabled
+        if (shouldAvoidControls != controlAvoidanceEnabled) {
             controlAvoidanceEnabled = shouldAvoidControls
             if (shouldAvoidControls) {
                 BottomAdjacentControlAvoidance.start(mainWindowView)
