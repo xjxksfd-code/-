@@ -10,6 +10,7 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Bundle
 import android.os.Build
+import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -255,6 +256,7 @@ class LiquidGlassOverlayView(
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
+        Log.i("DLG_VOFFSET", "onAttachedToWindow fired")
         // View 已真正加入 WindowManager，此时才能安全地修改 LayoutParams.y。
         // 用 post{} 确保在窗口完成 attach 后再执行一次当前位置应用。
         post { applyWindowVerticalOffset() }
@@ -296,6 +298,11 @@ class LiquidGlassOverlayView(
         if (settings.barVerticalOffsetDp != barVerticalOffsetDp.value) {
             barVerticalOffsetDp.value = settings.barVerticalOffsetDp
         }
+        Log.i(
+            "DLG_VOFFSET",
+            "SETTINGS barVerticalOffsetDp=${settings.barVerticalOffsetDp} " +
+                "stateValue=${barVerticalOffsetDp.value}",
+        )
         applyWindowVerticalOffset()
     }
 
@@ -311,17 +318,47 @@ class LiquidGlassOverlayView(
      */
     // 允许宿主 (LiquidGlassHook) 在 addView 之后从外部再应用一次，避免时序竞争。
     internal fun applyWindowVerticalOffset() {
+        Log.i(
+            "DLG_VOFFSET",
+            "CALL attached=$isAttachedToWindow valueDp=${barVerticalOffsetDp.value} " +
+                "layoutParamsType=${layoutParams?.javaClass?.simpleName}",
+        )
         // 只在 View 真正 attach 到 WindowManager 后才修改窗口位置。
-        if (!isAttachedToWindow) return
-        val params = layoutParams as? WindowManager.LayoutParams ?: return
+        if (!isAttachedToWindow) {
+            Log.i("DLG_VOFFSET", "ABORT not attached")
+            return
+        }
+        val params = layoutParams as? WindowManager.LayoutParams
+        if (params == null) {
+            Log.i("DLG_VOFFSET", "ABORT layoutParams is not WindowManager.LayoutParams")
+            return
+        }
         val offsetPx =
             (barVerticalOffsetDp.value * resources.displayMetrics.density).roundToInt()
         val desiredY = -offsetPx
-        if (params.y == desiredY) return
+        Log.i(
+            "DLG_VOFFSET",
+            "APPLY desiredY=$desiredY offsetPx=$offsetPx yBefore=${params.y} gravity=${params.gravity}",
+        )
+        if (params.y == desiredY) {
+            Log.i("DLG_VOFFSET", "SKIP already at desiredY=$desiredY")
+            return
+        }
         params.y = desiredY
         val windowManager =
-            context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return
-        runCatching { windowManager.updateViewLayout(this, params) }
+            context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+        if (windowManager == null) {
+            Log.i("DLG_VOFFSET", "ABORT no WindowManager")
+            return
+        }
+        val result = runCatching { windowManager.updateViewLayout(this, params) }
+        result.onFailure { Log.i("DLG_VOFFSET", "FAIL ${it.javaClass.simpleName}: ${it.message}") }
+        if (result.isSuccess) {
+            Log.i(
+                "DLG_VOFFSET",
+                "DONE yAfter=${(layoutParams as? WindowManager.LayoutParams)?.y}",
+            )
+        }
     }
 
     override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
