@@ -426,6 +426,9 @@ class LiquidGlassHook : IXposedHookLoadPackage {
                 overlay,
                 createOverlayLayoutParams(activity, overlayGeometry),
             )
+            // 新增：此时 layoutParams 才真正是 WindowManager.LayoutParams，
+            // 保险起见再应用一次，避免任何时序竞争导致初始偏移丢失
+            overlay.applyWindowVerticalOffset()
             ScreenCaptureExclusion.request(overlay)
             stateMonitor.start()
             ModuleLog.info("liquid glass overlay installed in app subwindow")

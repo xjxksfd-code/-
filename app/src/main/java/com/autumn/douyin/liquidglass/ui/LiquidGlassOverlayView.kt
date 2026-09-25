@@ -309,7 +309,8 @@ class LiquidGlassOverlayView(
      * With gravity = BOTTOM, a *positive* LayoutParams.y pushes the window UP, so we
      * negate the user value: positive -> move down, negative -> move up.
      */
-    private fun applyWindowVerticalOffset() {
+    // 允许宿主 (LiquidGlassHook) 在 addView 之后从外部再应用一次，避免时序竞争。
+    internal fun applyWindowVerticalOffset() {
         // 只在 View 真正 attach 到 WindowManager 后才修改窗口位置。
         if (!isAttachedToWindow) return
         val params = layoutParams as? WindowManager.LayoutParams ?: return
