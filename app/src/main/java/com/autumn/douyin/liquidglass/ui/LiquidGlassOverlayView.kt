@@ -128,8 +128,11 @@ class LiquidGlassOverlayView(
     private var controlAvoidanceEnabled: Boolean
     private var barHeightDp = mutableStateOf(ModuleSettingsStore.DefaultBarHeightDp)
     private var barVerticalOffsetDp = mutableStateOf(ModuleSettingsStore.DefaultBarVerticalOffsetDp)
-    // 内容层实际使用的像素平移（正=下移，负=上移），由 applyWindowVerticalOffset() 驱动。
-    private var barContentOffsetPx = mutableStateOf(0)
+    // 路线 C：不再放大窗口，也不再做内容层平移。窗口尺寸严格等于胶囊高度
+    // (LIQUID_OVERLAY_HEIGHT_DP)，整体上下位移通过移动窗口自身 (LayoutParams.y)
+    // 完成，从而让窗口的可触摸区收缩到只剩胶囊本身。
+    // 当前窗口在屏幕上的静止像素 Y（由 LiquidGlassHook 提供 baseWindowY）。
+    private var windowOffsetPx = mutableStateOf(0)
 
     /**
      * Resting window Y (in host-window coordinates) for the overlay window.
@@ -139,7 +142,7 @@ class LiquidGlassOverlayView(
      */
     internal var baseWindowY: Int = 0
     private var currentTouchInsideContent = false
-    private var touchableRegionListener: ViewTreeObserver.OnComputeInternalInsetsListener? = null
+
     private val delayedBackdropStart = Runnable {
         if (dynamicBackdropEnabled && desiredNativeBarPresent && visibility != View.GONE) {
             compositeFrameProvider.start()
@@ -173,8 +176,8 @@ class LiquidGlassOverlayView(
         get() = savedStateController.savedStateRegistry
 
     init {
-        val slackPx = (LIQUID_OVERLAY_VERTICAL_SLACK_DP * resources.displayMetrics.density).roundToInt()
-        layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, overlayHeightPx + slackPx * 2)
+        // 路线 C：窗口高度严格等于胶囊可见高度，不再预留 slack 渲染面。
+        layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, overlayHeightPx)
         // 注意：此处 View 可能尚未真正加入 WindowManager，此时调用
         // updateViewLayout() 无效。窗口级位移统一在 onAttachedToWindow() 之后应用。
         setBackgroundColor(Color.TRANSPARENT)
@@ -205,7 +208,6 @@ class LiquidGlassOverlayView(
                 expandContentToWindow = expandContentToWindow,
                 barHeightDp = { barHeightDp.value },
                 barVerticalOffsetDp = { barVerticalOffsetDp.value },
-                barContentOffsetPx = { barContentOffsetPx.value },
             )
         }
         addView(composeView)
@@ -276,67 +278,14 @@ class LiquidGlassOverlayView(
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         Log.i("DLG_VOFFSET", "onAttachedToWindow fired")
-        setupTouchableRegion()
         // View 已真正加入 WindowManager，此时才能安全地修改 LayoutParams.y。
         // 用 post{} 确保在窗口完成 attach 后再执行一次当前位置应用。
         post { applyWindowVerticalOffset() }
     }
 
-    /**
-     * Restrict the window's *touchable* area to the visible capsule only.
-     *
-     * The overlay window is intentionally much taller than the capsule (96dp +
-     * 2 * slack) so the content can be slid vertically inside it. That means the
-     * window rect itself covers a large part of the screen, and because the
-     * window is the input target, every DOWN landing inside that big rect is
-     * delivered to this window and never reaches the Douyin feed below it --
-     * returning false from dispatchTouchEvent does NOT re-route the event to the
-     * window underneath. That is what broke swipe-to-next-video and the progress
-     * bar drag.
-     *
-     * Declaring an explicit touchable region via OnComputeInternalInsetsListener
-     * makes the WindowManager itself treat only the capsule as part of this
-     * window; touches outside it are routed straight to the app below.
-     */
-    private fun setupTouchableRegion() {
-        if (touchableRegionListener != null) return
-        val listener = ViewTreeObserver.OnComputeInternalInsetsListener { info ->
-            val region = lastCaptureRegion
-            if (region == null) {
-                // Before the capsule has been laid out we do NOT want to grab
-                // touches at all -- leave the region empty so the whole window is
-                // transparent to input and the feed keeps working.
-                info.setTouchableInsets(
-                    ViewTreeObserver.InternalInsetsInfo.TOUCHABLE_INSETS_REGION,
-                )
-                info.touchableRegion.setEmpty()
-                return@OnComputeInternalInsetsListener
-            }
-            val loc = IntArray(2)
-            getLocationOnScreen(loc)
-            val pad = lastCapturePaddingPx
-            val left = (loc[0] + region.left - pad).toInt()
-            val top = (loc[1] + region.top - pad).toInt()
-            val right = (loc[0] + region.right + pad).toInt()
-            val bottom = (loc[1] + region.bottom + pad).toInt()
-            info.setTouchableInsets(
-                ViewTreeObserver.InternalInsetsInfo.TOUCHABLE_INSETS_REGION,
-            )
-            info.touchableRegion.set(left, top, right, bottom)
-        }
-        touchableRegionListener = listener
-        viewTreeObserver.addOnComputeInternalInsetsListener(listener)
-        ModuleLog.info("touchable region listener installed")
-    }
 
     override fun onDetachedFromWindow() {
         BottomAdjacentControlAvoidance.stop(mainWindowView)
-        touchableRegionListener?.let { l ->
-            if (viewTreeObserver.isAlive) {
-                viewTreeObserver.removeOnComputeInternalInsetsListener(l)
-            }
-        }
-        touchableRegionListener = null
         val animator = presenceAnimator
         presenceAnimator = null
         animator?.cancel()
@@ -355,7 +304,6 @@ class LiquidGlassOverlayView(
         }
 
         val shouldAvoidControls = settings.controlAvoidanceEnabled
-        if (shouldAvoidControls != controlAvoidanceEnabled) {
             controlAvoidanceEnabled = shouldAvoidControls
             if (shouldAvoidControls) {
                 BottomAdjacentControlAvoidance.start(mainWindowView)
@@ -380,26 +328,33 @@ class LiquidGlassOverlayView(
     }
 
     /**
-     * 垂直位置滑条：不再移动窗口，而是把位移交给 Compose 内容层。
+     * 垂直位置滑条（路线 C）：直接移动窗口自身。
      *
-     * 窗口用 gravity = BOTTOM / y = 0 固定贴在屏幕底，并且高度放大为
-     * [LIQUID_OVERLAY_HEIGHT_DP] + 2 * [LIQUID_OVERLAY_VERTICAL_SLACK_DP]，为内容平移留出
-     * 渲染表面（同时 clipChildren=false）。这里只更新 [barContentOffsetPx]，由内容层的
-     * Modifier.offset 真正完成平移，从而绕开 TYPE_APPLICATION_PANEL 子窗口底边被系统
-     * 硬钳制、导致下移无效的问题。
+     * 窗口高度已收缩到严格等于胶囊（[LIQUID_OVERLAY_HEIGHT_DP]），因此窗口的可触摸
+     * 面积只剩胶囊本身，不再有吞噬刷视频滑动 / 进度条拖动的空转区。上下位移改由
+     * [android.view.WindowManager.LayoutParams.y] 驱动：窗口以 gravity = TOP 定位，y =
+     * baseWindowY + 用户偏移。配合 FLAG_LAYOUT_NO_LIMITS（见 LiquidGlassHook）即可
+     * 越过 TYPE_APPLICATION_PANEL 子窗口的底边钳制。
      */
     // 允许宿主 (LiquidGlassHook) 在 addView 之后从外部再应用一次，避免时序竞争。
     internal fun applyWindowVerticalOffset() {
         val offsetPx =
             (barVerticalOffsetDp.value * resources.displayMetrics.density).roundToInt()
+        windowOffsetPx.value = offsetPx
+        val targetY = baseWindowY + offsetPx
         Log.i(
             "DLG_VOFFSET",
-            "APPLY contentOffsetPx=$offsetPx valueDp=${barVerticalOffsetDp.value} " +
-                "attached=$isAttachedToWindow",
+            "APPLY windowY=$targetY base=$baseWindowY offsetPx=$offsetPx " +
+                "valueDp=${barVerticalOffsetDp.value} attached=$isAttachedToWindow",
         )
-        // 不再移动窗口（窗口底边被系统钳制在屏幕底，下移必然无效）。
-        // 改为把偏移交给 Compose 内容层，通过 Modifier.offset 平移胶囊。
-        barContentOffsetPx.value = offsetPx
+        val lp = layoutParams
+        if (lp is WindowManager.LayoutParams) {
+            lp.y = targetY
+            if (isAttachedToWindow) {
+                runCatching { windowManager.updateViewLayout(this, lp) }
+                    .onFailure { ModuleLog.error("updateViewLayout(offset) failed", it) }
+            }
+        }
     }
 
     override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
@@ -541,8 +496,6 @@ class LiquidGlassOverlayView(
     ) {
         lastCaptureRegion = localRegion
         lastCapturePaddingPx = capturePaddingPx
-        // Re-evaluate the touchable region with the fresh capsule bounds.
-        requestApplyInsets()
         val overlayPosition = IntArray(2)
         getLocationOnScreen(overlayPosition)
         if (controlAvoidanceEnabled && !avoidanceGeometryLocked) {
@@ -620,12 +573,10 @@ private fun LiquidGlassOverlayContent(
     expandContentToWindow: Boolean,
     barHeightDp: () -> Int,
     barVerticalOffsetDp: () -> Int,
-    barContentOffsetPx: () -> Int,
 ) {
     val density = LocalDensity.current
     val activeBarHeightDp = barHeightDp()
     val activeBarVerticalOffsetDp = barVerticalOffsetDp()
-    val activeBarContentOffsetPx = barContentOffsetPx()
     val tabs = remember {
         listOf(
             DouyinTab("首页", Icons.Rounded.Cottage),
@@ -639,7 +590,7 @@ private fun LiquidGlassOverlayContent(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
-                .height((LIQUID_OVERLAY_HEIGHT_DP + LIQUID_OVERLAY_VERTICAL_SLACK_DP * 2).dp),
+                .height(LIQUID_OVERLAY_HEIGHT_DP.dp)
         ) {
             val reservedHorizontalPadding =
                 if (expandContentToWindow) {
@@ -655,19 +606,15 @@ private fun LiquidGlassOverlayContent(
                 minOf(308.dp, availableCapsuleWidth)
             }.coerceAtLeast(224.dp)
 
-            // 窗口已扩大为 96dp + 2*slack，Box 高度跟随。Row 改为垂直居中，
-            // 再用 offset 把它拉回原始视觉位置（距底 11dp），然后叠上用户滑条位移。
-            val restingOffsetPx = with(density) {
-                (LIQUID_OVERLAY_VERTICAL_SLACK_DP.dp - 11.dp).roundToPx()
-            }
+            // 路线 C：窗口/Box 高度严格等于胶囊。Row 直接贴着 Box 底边（距底 11dp），
+            // 不再需要任何内容层平移——整体位移由窗口自身移动完成。
             Row(
                 modifier = (if (expandContentToWindow) {
                     Modifier.fillMaxWidth()
                 } else {
                     Modifier
                 })
-                    .align(Alignment.Center)
-                    .offset { IntOffset(0, restingOffsetPx + activeBarContentOffsetPx) }
+                    .align(Alignment.BottomCenter)
                     .padding(bottom = 11.dp)
                     .padding(
                         horizontal = if (expandContentToWindow) {

@@ -489,19 +489,19 @@ private fun createOverlayLayoutParams(
         WindowManager.LayoutParams.TYPE_APPLICATION_PANEL,
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED or
+            // 路线 C：解除 TYPE_APPLICATION_PANEL 子窗口的底边钳制，使窗口可以
+            // 整体下移越过父窗口底边（“整体上下位置”滑条依赖此项）。
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
         PixelFormat.TRANSLUCENT,
     ).apply {
-        // The overlay window stays pinned to the bottom edge (gravity = BOTTOM,
-        // y = 0). We deliberately DO NOT move the window to implement the
-        // vertical-position slider: a TYPE_APPLICATION_PANEL child window is
-        // hard-clamped by the system so its bottom edge can never go past the
-        // parent bottom edge, which made every DOWN offset a no-op. The slider is
-        // instead applied inside the content (Modifier.offset in
-        // LiquidGlassOverlayView), which is not subject to that clamp.
-        gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+        // 路线 C：窗口尺寸严格等于胶囊。窗口以 gravity = TOP 定位，y = baseY 是它的
+        // 静止位置；“整体上下位置”滑条通过修改 LayoutParams.y 直接移动窗口
+        // (见 LiquidGlassOverlayView.applyWindowVerticalOffset)，配合
+        // FLAG_LAYOUT_NO_LIMITS 即可越过子窗口底边钳制。可触摸区因此只剩胶囊本身。
+        gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
         x = geometry.x
-        y = 0
+        y = geometry.baseY
         setTitle("DouyinLiquidGlassOverlay")
         token = activity.window.decorView.windowToken
         windowAnimations = 0
@@ -563,8 +563,7 @@ private fun calculateOverlayWindowGeometry(
  * Gravity.BOTTOM behavior: the window is flush with the bottom of the screen.
  */
 private fun overlayWindowHeightPx(density: Float): Int =
-    ((LIQUID_OVERLAY_HEIGHT_DP + LIQUID_OVERLAY_VERTICAL_SLACK_DP * 2) * density)
-        .roundToInt()
+    (LIQUID_OVERLAY_HEIGHT_DP * density).roundToInt()
 
 private fun fallbackOverlayBaseY(activity: Activity): Int {
     val metrics = activity.resources.displayMetrics
