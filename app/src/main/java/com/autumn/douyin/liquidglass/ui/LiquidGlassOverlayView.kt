@@ -59,7 +59,9 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.roundToPx
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -537,6 +539,19 @@ private fun LiquidGlassOverlayContent(
                 minOf(308.dp, availableCapsuleWidth)
             }.coerceAtLeast(224.dp)
 
+            // The overlay window is bottom-anchored and exactly
+            // LIQUID_OVERLAY_HEIGHT_DP tall, while the capsule rests with a
+            // fixed 11dp bottom padding. Clamp the requested vertical offset to
+            // the space that actually exists inside the window so the bar never
+            // gets pushed out of view (which previously looked like "no effect").
+            val restingBottomPaddingDp = 11
+            val topHeadroomDp =
+                (LIQUID_OVERLAY_HEIGHT_DP - restingBottomPaddingDp - activeBarHeightDp)
+                    .coerceAtLeast(0)
+            val bottomSlackDp = restingBottomPaddingDp
+            val effectiveVerticalOffsetDp = activeBarVerticalOffsetDp
+                .coerceIn(-topHeadroomDp, bottomSlackDp)
+
             Row(
                 modifier = (if (expandContentToWindow) {
                     Modifier.fillMaxWidth()
@@ -544,7 +559,13 @@ private fun LiquidGlassOverlayContent(
                     Modifier
                 })
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = (11 + activeBarVerticalOffsetDp).dp)
+                    .padding(bottom = 11.dp)
+                    .offset {
+                        IntOffset(
+                            x = 0,
+                            y = with(density) { effectiveVerticalOffsetDp.dp.roundToPx() },
+                        )
+                    }
                     .padding(
                         horizontal = if (expandContentToWindow) {
                             LIQUID_OVERLAY_EDGE_CONTENT_INSET_DP.dp
