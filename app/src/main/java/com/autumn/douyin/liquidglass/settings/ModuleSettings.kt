@@ -77,7 +77,8 @@ object ModuleSettingsStore {
     val FramePeriodChoices = listOf(8, 11, 17, 22, 33)
     val CaptureWidthChoices = listOf(320, 400, 480, 560, 640)
     val BarHeightChoices = listOf(64, 58, 52, 46, 40)
-    val BarVerticalOffsetChoices = listOf(-20, -15, -10, -5, 0, 20, 40, 60, 80, 100)
+    // 整体上下位置：-20..100 全区间、每 5dp 一档（共 25 档），与 Min/MaxDp 对齐。
+    val BarVerticalOffsetChoices = (-20..100 step 5).toList()
     // 整体上下位置的合法范围（含负数）。仅做越界保护，不把负数本身视为非法。
     const val BarVerticalOffsetMinDp = -20
     const val BarVerticalOffsetMaxDp = 100
