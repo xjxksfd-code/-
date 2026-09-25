@@ -352,8 +352,11 @@ class LiquidGlassOverlayView(
         if (lp is WindowManager.LayoutParams) {
             lp.y = targetY
             if (isAttachedToWindow) {
-                runCatching { windowManager.updateViewLayout(this, lp) }
-                    .onFailure { ModuleLog.error("updateViewLayout(offset) failed", it) }
+                val wm = context.getSystemService(WindowManager::class.java)
+                if (wm != null) {
+                    runCatching { wm.updateViewLayout(this, lp) }
+                        .onFailure { ModuleLog.error("updateViewLayout(offset) failed", it) }
+                }
             }
         }
     }
