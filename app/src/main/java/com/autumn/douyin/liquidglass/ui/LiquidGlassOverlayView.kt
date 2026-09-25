@@ -231,11 +231,18 @@ class LiquidGlassOverlayView(
         addOnAttachStateChangeListener(object : OnAttachStateChangeListener {
             override fun onViewAttachedToWindow(view: View) {
                 ScreenCaptureExclusion.start(view)
+                // 帧同步脉冲门控：每收到一帧合成帧（与守护进程抓帧同相），
+                // 立刻把底栏临时排除出捕获帧，使“下一帧”的玻璃背景干净，
+                // 避免底栏自己叠自己造成发黑/残影；脉冲结束后恢复为截图可见。
+                backdrop.setOnCompositeFrameArrivedListener {
+                    post { ScreenCaptureExclusion.pulseExclusion(view) }
+                }
                 startBackdropIfEligible()
                 if (controlAvoidanceEnabled) BottomAdjacentControlAvoidance.start(mainWindowView)
             }
 
             override fun onViewDetachedFromWindow(view: View) {
+                backdrop.setOnCompositeFrameArrivedListener(null)
                 ScreenCaptureExclusion.stop(view)
                 stopBackdrop()
                 val activity = context as? Activity ?: return

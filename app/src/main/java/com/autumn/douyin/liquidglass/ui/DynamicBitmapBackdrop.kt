@@ -49,6 +49,7 @@ class DynamicBitmapBackdrop : Backdrop {
         private set
 
     private var onCaptureRegionChanged: (() -> Unit)? = null
+    private var onCompositeFrameArrived: (() -> Unit)? = null
     private var hasLoggedBackdropGeometry = false
     private var hasLoggedSourceMapping = false
     private var hasLoggedSurfaceMapping = false
@@ -57,6 +58,11 @@ class DynamicBitmapBackdrop : Backdrop {
 
     fun setOnCaptureRegionChangedListener(listener: () -> Unit) {
         onCaptureRegionChanged = listener
+    }
+
+    /** 每收到一帧守护进程抓取的合成帧（与抓帧同相）时触发，用于帧同步脉冲门控。 */
+    fun setOnCompositeFrameArrivedListener(listener: (() -> Unit)?) {
+        onCompositeFrameArrived = listener
     }
 
     fun updateFrame(bitmap: Bitmap?) {
@@ -72,6 +78,9 @@ class DynamicBitmapBackdrop : Backdrop {
         compositeFrame = bitmap
         compositeCaptureRect = screenRect
         compositeFrameTimestamp = frameTimestamp
+        if (bitmap != null) {
+            onCompositeFrameArrived?.invoke()
+        }
     }
 
     fun clearCompositeFrame() {
