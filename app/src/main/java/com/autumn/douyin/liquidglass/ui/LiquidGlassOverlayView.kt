@@ -98,6 +98,13 @@ internal const val LIQUID_OVERLAY_MAX_CONTENT_WIDTH_DP = 384f
 internal const val LIQUID_OVERLAY_MIN_CONTENT_WIDTH_DP = 300f
 internal const val LIQUID_OVERLAY_HORIZONTAL_ALLOWANCE_DP = 32f
 internal const val LIQUID_OVERLAY_EDGE_CONTENT_INSET_DP = 16f
+// 需求二修复：胶囊顶部留白区（以及可能与其重叠的宿主进度条所在行）不参与触摸消费。
+// 从 contentRegion 顶部再向内收缩本值（dp），该条带内的触摸一律透传给下层窗口，
+// 避免悬浮窗用整块矩形把宿主进度条手势吞掉。
+internal const val LIQUID_OVERLAY_TOP_TOUCH_INSET_DP = 7f
+// ⚠️ 诊断探针（临时）：为 true 时悬浮窗不消费任何触摸，全部透传给下层窗口。
+// 仅用于抓取宿主进度条真实坐标，验证完成后必须改回 false。
+internal const val LIQUID_OVERLAY_TOUCH_PROBE_PASSTHROUGH = true
 // 窗口上下各预留的边量（dp），给内容 Modifier.offset 平移留出渲染表面。
 internal const val LIQUID_OVERLAY_VERTICAL_SLACK_DP = 160f
 private const val Android13CaptureResumeDelayMillis = 1500L
@@ -121,6 +128,9 @@ class LiquidGlassOverlayView(
             resources.displayMetrics.density).roundToInt()
     private val edgeContentInsetPx =
         LIQUID_OVERLAY_EDGE_CONTENT_INSET_DP * resources.displayMetrics.density
+    // 需求二修复：胶囊顶部触摸内缩像素值。落在 contentRegion 顶部该条带内的触摸透传。
+    private val topTouchInsetPx =
+        LIQUID_OVERLAY_TOP_TOUCH_INSET_DP * resources.displayMetrics.density
     override val viewModelStore: ViewModelStore = ViewModelStore()
     private var lifecycleStarted = false
     private var desiredNativeBarPresent = true
@@ -242,19 +252,31 @@ class LiquidGlassOverlayView(
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        // 诊断探针：全量透传，不消费任何触摸，使宿主进度条 hook 能被触发。
+        if (LIQUID_OVERLAY_TOUCH_PROBE_PASSTHROUGH) {
+            ModuleLog.info {
+                "glass touch PROBE passthrough: local=${event.x.roundToInt()},${event.y.roundToInt()} " +
+                    "raw=${event.rawX.roundToInt()},${event.rawY.roundToInt()} action=${event.actionMasked} " +
+                    "contentRegion=$lastCaptureRegion"
+            }
+            return false
+        }
         val contentRegion = lastCaptureRegion
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 val horizontalTouchInset = if (expandContentToWindow) edgeContentInsetPx else 0f
+                // 需求二修复：触摸消费区的顶部从 contentRegion.top 再向内收 topTouchInsetPx，
+                // 使该顶部条带（常与宿主进度条所在行重叠）透传给下层窗口，避免吞掉进度条手势。
+                val effectiveTop = contentRegion?.top?.plus(topTouchInsetPx)
                 currentTouchInsideContent = contentRegion == null ||
                     event.x >= contentRegion.left - horizontalTouchInset &&
                     event.x <= contentRegion.right + horizontalTouchInset &&
-                    event.y >= contentRegion.top && event.y <= contentRegion.bottom
+                    effectiveTop != null && event.y >= effectiveTop && event.y <= contentRegion.bottom
                 if (!currentTouchInsideContent) {
                     ModuleLog.info {
                         "glass touch passthrough: local=${event.x.roundToInt()},${event.y.roundToInt()} " +
                             "raw=${event.rawX.roundToInt()},${event.rawY.roundToInt()} " +
-                            "contentRegion=$contentRegion"
+                            "contentRegion=$contentRegion topInsetPx=${topTouchInsetPx.roundToInt()}"
                     }
                     return false
                 }
