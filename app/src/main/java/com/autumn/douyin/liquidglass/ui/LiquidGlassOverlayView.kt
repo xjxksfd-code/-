@@ -158,6 +158,7 @@ class LiquidGlassOverlayView(
 
     init {
         layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, overlayHeightPx)
+        applyWindowVerticalOffset()
         setBackgroundColor(Color.TRANSPARENT)
         isFocusable = false
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
@@ -287,6 +288,29 @@ class LiquidGlassOverlayView(
         if (settings.barVerticalOffsetDp != barVerticalOffsetDp.value) {
             barVerticalOffsetDp.value = settings.barVerticalOffsetDp
         }
+        applyWindowVerticalOffset()
+    }
+
+    /**
+     * The overlay window is exactly [LIQUID_OVERLAY_HEIGHT_DP] tall and anchored to the
+     * bottom of the screen (gravity = BOTTOM). Any offset applied *inside* the Compose
+     * content (padding/offset) is clipped by that fixed 96dp window, so the capsule can
+     * never actually move up or down on screen. To make the "vertical position" slider
+     * visibly work we move the whole window instead, by updating its LayoutParams.y.
+     *
+     * With gravity = BOTTOM, a *positive* LayoutParams.y pushes the window UP, so we
+     * negate the user value: positive -> move down, negative -> move up.
+     */
+    private fun applyWindowVerticalOffset() {
+        val params = layoutParams as? WindowManager.LayoutParams ?: return
+        val offsetPx =
+            (barVerticalOffsetDp.value * resources.displayMetrics.density).roundToInt()
+        val desiredY = -offsetPx
+        if (params.y == desiredY) return
+        params.y = desiredY
+        val windowManager =
+            context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return
+        runCatching { windowManager.updateViewLayout(this, params) }
     }
 
     override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
@@ -538,20 +562,9 @@ private fun LiquidGlassOverlayContent(
                 minOf(308.dp, availableCapsuleWidth)
             }.coerceAtLeast(224.dp)
 
-            // The overlay window is bottom-anchored and exactly
-            // LIQUID_OVERLAY_HEIGHT_DP tall, while the capsule rests with a
-            // fixed 11dp bottom padding. Clamp the requested vertical offset to
-            // the space that actually exists inside the window so the bar never
-            // gets pushed out of view (which previously looked like "no effect").
-            val restingBottomPaddingDp = 11
-            val overlayHeightDp = LIQUID_OVERLAY_HEIGHT_DP.toInt()
-            val topHeadroomDp =
-                (overlayHeightDp - restingBottomPaddingDp - activeBarHeightDp)
-                    .coerceAtLeast(0)
-            val bottomSlackDp = restingBottomPaddingDp
-            val effectiveVerticalOffsetDp = activeBarVerticalOffsetDp
-                .coerceIn(-topHeadroomDp, bottomSlackDp)
-
+            // The overlay window itself is shifted vertically (see
+            // applyWindowVerticalOffset); inside the window the capsule keeps a
+            // fixed resting position, so no per-item offset is needed here.
             Row(
                 modifier = (if (expandContentToWindow) {
                     Modifier.fillMaxWidth()
@@ -560,12 +573,6 @@ private fun LiquidGlassOverlayContent(
                 })
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 11.dp)
-                    .offset {
-                        IntOffset(
-                            x = 0,
-                            y = with(density) { effectiveVerticalOffsetDp.dp.roundToPx() },
-                        )
-                    }
                     .padding(
                         horizontal = if (expandContentToWindow) {
                             LIQUID_OVERLAY_EDGE_CONTENT_INSET_DP.dp
