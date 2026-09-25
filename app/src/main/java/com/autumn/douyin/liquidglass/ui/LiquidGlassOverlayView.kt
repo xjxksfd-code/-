@@ -104,7 +104,7 @@ internal const val LIQUID_OVERLAY_EDGE_CONTENT_INSET_DP = 16f
 internal const val LIQUID_OVERLAY_TOP_TOUCH_INSET_DP = 7f
 // ⚠️ 诊断探针（临时）：为 true 时悬浮窗不消费任何触摸，全部透传给下层窗口。
 // 仅用于抓取宿主进度条真实坐标，验证完成后必须改回 false。
-internal const val LIQUID_OVERLAY_TOUCH_PROBE_PASSTHROUGH = true
+internal const val LIQUID_OVERLAY_TOUCH_PROBE_PASSTHROUGH = false
 // 窗口上下各预留的边量（dp），给内容 Modifier.offset 平移留出渲染表面。
 internal const val LIQUID_OVERLAY_VERTICAL_SLACK_DP = 160f
 private const val Android13CaptureResumeDelayMillis = 1500L

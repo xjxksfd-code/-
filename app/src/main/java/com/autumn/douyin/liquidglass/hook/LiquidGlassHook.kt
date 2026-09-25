@@ -293,6 +293,45 @@ class LiquidGlassHook : IXposedHookLoadPackage {
         }
     }
 
+    private fun installViewTouchTraceDiagnostics() {
+        installHook("View.dispatchTouchEvent.probe") {
+            XposedBridge.hookAllMethods(
+                View::class.java,
+                "dispatchTouchEvent",
+                object : XC_MethodHook() {
+                    override fun afterHookedMethod(param: MethodHookParam) {
+                        val view = param.thisObject as? View ?: return
+                        val event = param.args.firstOrNull() as? MotionEvent ?: return
+                        // 只关心底部区域（进度条一般在下半屏）
+                        if (event.rawY < 1800f) return
+                        val action = event.actionMasked
+                        // 只打 DOWN，减少日志量
+                        if (action != MotionEvent.ACTION_DOWN) return
+                        val loc = IntArray(2)
+                        view.getLocationOnScreen(loc)
+                        val idName = try {
+                            if (view.id == View.NO_ID) "no-id"
+                            else view.resources.getResourceEntryName(view.id)
+                        } catch (t: Throwable) { "id=" + view.id }
+                        val cls = view.javaClass.name
+                        val w = view.width
+                        val h = view.height
+                        val handled = param.result as? Boolean
+                        ModuleLog.info {
+                            "view touch trace: class=" + cls +
+                                " id=" + idName +
+                                " inst=" + System.identityHashCode(view) +
+                                " screen=[" + loc[0] + "," + loc[1] + "][" + (loc[0] + w) + "," + (loc[1] + h) + "]" +
+                                " w=" + w + " h=" + h +
+                                " raw=" + event.rawX + "," + event.rawY +
+                                " handled=" + handled
+                        }
+                    }
+                },
+            )
+        }.onFailure { ModuleLog.error("failed to install view touch trace diagnostics", it) }
+    }
+
     private fun installProgressTouchDiagnostics() {
         installHook("AbsSeekBar.dispatchTouchEvent") {
             XposedBridge.hookAllMethods(
@@ -334,6 +373,7 @@ class LiquidGlassHook : IXposedHookLoadPackage {
         }
         TransparentBarIntegration.install(classLoader)
         installProgressTouchDiagnostics()
+        installViewTouchTraceDiagnostics()
     }
 
     private fun isMainDouyinActivity(activity: Activity): Boolean {
