@@ -77,10 +77,10 @@ object ModuleSettingsStore {
     val FramePeriodChoices = listOf(8, 11, 17, 22, 33)
     val CaptureWidthChoices = listOf(320, 400, 480, 560, 640)
     val BarHeightChoices = listOf(64, 58, 52, 46, 40)
-    val BarVerticalOffsetChoices = listOf(-20, -15, -10, -5, 0, 5, 10, 15, 20)
+    val BarVerticalOffsetChoices = listOf(-20, -15, -10, -5, 0, 20, 40, 60, 80, 100)
     // 整体上下位置的合法范围（含负数）。仅做越界保护，不把负数本身视为非法。
     const val BarVerticalOffsetMinDp = -20
-    const val BarVerticalOffsetMaxDp = 20
+    const val BarVerticalOffsetMaxDp = 100
     val DefaultFramePeriod = PreferredFramePeriodMillis
     val DefaultCaptureWidth = PreferredCaptureWidth
     val DefaultBarHeightDp = PreferredBarHeightDp
@@ -173,7 +173,7 @@ object ModuleSettingsStore {
         val barVerticalOffsetDpIndex = current.getColumnIndex(ColumnBarVerticalOffsetDp)
         val revision = current.getColumnIndex(ColumnRevision)
         // 这里判断的是“列索引”是否有效（-1 表示列不存在），不是判断“位置值”的正负。
-        // barVerticalOffsetDp 允许 -20~20（含负数），绝不能因为值为负而拒绝。
+        // barVerticalOffsetDp 允许 -20~100（含负数），绝不能因为值为负而拒绝。
         if (!current.moveToFirst() ||
             glassBar < 0 || controlAvoidance < 0 || dynamicBackdrop < 0 ||
             diagnosticLogging < 0 || revision < 0

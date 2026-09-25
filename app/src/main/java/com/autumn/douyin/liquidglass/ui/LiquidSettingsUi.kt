@@ -290,7 +290,7 @@ private fun barHeightSubtitle(value: Int): String = when (value) {
 }
 
 private fun barVerticalOffsetSubtitle(value: Int): String = when {
-    value > 0 -> "整体下移 ${value}dp（共 ${value / 5} 档）"
+    value > 0 -> "整体下移 ${value}dp（共 ${value / 20} 档）"
     value < 0 -> "整体上移 ${-value}dp（共 ${-value / 5} 档）"
     else -> "默认位置"
 }
