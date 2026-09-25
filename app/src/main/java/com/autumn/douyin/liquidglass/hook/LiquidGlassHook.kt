@@ -22,8 +22,8 @@ import com.autumn.douyin.liquidglass.nativebar.NativeBottomBarLocator
 import com.autumn.douyin.liquidglass.root.CompositeFrameProvider
 import com.autumn.douyin.liquidglass.ui.CapturedLayerRegistry
 import com.autumn.douyin.liquidglass.ui.DynamicBitmapBackdrop
+import com.autumn.douyin.liquidglass.ui.LIQUID_OVERLAY_BAR_PADDING_DP
 import com.autumn.douyin.liquidglass.ui.LIQUID_OVERLAY_HORIZONTAL_ALLOWANCE_DP
-import com.autumn.douyin.liquidglass.ui.LIQUID_OVERLAY_HEIGHT_DP
 import com.autumn.douyin.liquidglass.ui.LIQUID_OVERLAY_VERTICAL_SLACK_DP
 import com.autumn.douyin.liquidglass.ui.LIQUID_OVERLAY_MAX_CONTENT_WIDTH_DP
 import com.autumn.douyin.liquidglass.ui.LIQUID_OVERLAY_MIN_CONTENT_WIDTH_DP
@@ -522,7 +522,7 @@ private fun calculateOverlayWindowGeometry(
             width = calculateFallbackOverlayWindowWidth(parentWidth, density),
             x = 0,
             baseY = fallbackOverlayBaseY(activity),
-            height = overlayWindowHeightPx(density),
+            height = overlayWindowHeightPx(density, ModuleSettingsBridge.current.barHeightDp),
             edgeToEdge = false,
         )
     }
@@ -549,25 +549,31 @@ private fun calculateOverlayWindowGeometry(
         "liquid overlay geometry native=$nativeBounds target=[left=$left,right=$right] " +
             "width=$width x=$centerOffset edgeToEdge=$edgeToEdge parentWidth=$parentWidth"
     }
-    // Resting position: the overlay window sits so that its BOTTOM edge lands on the
-    // native bottom bar's bottom edge (measured in the host window's coordinates).
-    // Because the window size is fixed at LIQUID_OVERLAY_HEIGHT_DP, baseY is simply
-    // that bottom minus the window height.
-    val overlayHeightPx = (LIQUID_OVERLAY_HEIGHT_DP * density).roundToInt()
+    // Resting position: the overlay window's BOTTOM edge lands on the native bottom
+    // bar's bottom edge (in host-window coordinates); baseY = that bottom - window height.
+    // 路线 D：窗口高度 = 胶囊高度 + 上下留白，底边仍对齐原生栏底部。
+    // 这样窗口矩形几乎与胶囊重合，不再覆盖视频进度条区域的透明假触摸区。
+    val overlayHeightPx = overlayWindowHeightPx(
+        density,
+        ModuleSettingsBridge.current.barHeightDp,
+    )
     val baseY = (nativeBounds.bottom - overlayHeightPx).coerceAtLeast(0)
-    return OverlayWindowGeometry(width, overlayWindowHeightPx(density), centerOffset, baseY, edgeToEdge)
+    return OverlayWindowGeometry(width, overlayHeightPx, centerOffset, baseY, edgeToEdge)
 }
 
 /**
  * Resting Y used when the native bottom bar bounds are unavailable. Mirrors the
  * Gravity.BOTTOM behavior: the window is flush with the bottom of the screen.
  */
-private fun overlayWindowHeightPx(density: Float): Int =
-    (LIQUID_OVERLAY_HEIGHT_DP * density).roundToInt()
+private fun overlayWindowHeightPx(density: Float, barHeightDp: Int): Int =
+    ((barHeightDp + LIQUID_OVERLAY_BAR_PADDING_DP * 2f) * density).roundToInt()
 
 private fun fallbackOverlayBaseY(activity: Activity): Int {
     val metrics = activity.resources.displayMetrics
-    val overlayHeightPx = (LIQUID_OVERLAY_HEIGHT_DP * metrics.density).roundToInt()
+    val overlayHeightPx = overlayWindowHeightPx(
+        metrics.density,
+        ModuleSettingsBridge.current.barHeightDp,
+    )
     val screenHeightPx = activity.window.decorView.height
         .takeIf { it > 0 }
         ?: metrics.heightPixels

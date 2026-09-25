@@ -92,6 +92,8 @@ import top.yukonga.miuix.kmp.theme.LocalContentColor
 import kotlin.math.roundToInt
 
 internal const val LIQUID_OVERLAY_HEIGHT_DP = 96f
+// 路线 D：胶囊在悬浮窗口内上下各留出的呼吸空间（dp）。窗口高度因此 = 胶囊高度 + 2*本值。
+internal const val LIQUID_OVERLAY_BAR_PADDING_DP = 11f
 internal const val LIQUID_OVERLAY_MAX_CONTENT_WIDTH_DP = 384f
 internal const val LIQUID_OVERLAY_MIN_CONTENT_WIDTH_DP = 300f
 internal const val LIQUID_OVERLAY_HORIZONTAL_ALLOWANCE_DP = 32f
@@ -112,8 +114,11 @@ class LiquidGlassOverlayView(
 
     private val lifecycleOwner = OverlayLifecycleOwner()
     private val savedStateController = SavedStateRegistryController.create(this)
-    private val overlayHeightPx =
-        (LIQUID_OVERLAY_HEIGHT_DP * resources.displayMetrics.density).roundToInt()
+    // 路线 D：窗口高度 = 胶囊高度 + 上下留白，随 barHeightDp 动态变化，
+    // 保证窗口矩形 ≡ 胶囊矩形（不再有多余的透明假触摸区去吞进度条手势）。
+    private fun capsuleWindowHeightPx(): Int =
+        ((barHeightDp.value + LIQUID_OVERLAY_BAR_PADDING_DP * 2f) *
+            resources.displayMetrics.density).roundToInt()
     private val edgeContentInsetPx =
         LIQUID_OVERLAY_EDGE_CONTENT_INSET_DP * resources.displayMetrics.density
     override val viewModelStore: ViewModelStore = ViewModelStore()
@@ -176,8 +181,9 @@ class LiquidGlassOverlayView(
         get() = savedStateController.savedStateRegistry
 
     init {
-        // 路线 C：窗口高度严格等于胶囊可见高度，不再预留 slack 渲染面。
-        layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, overlayHeightPx)
+        // 路线 D：窗口高度 = 胶囊高度 + 上下留白，窗口矩形与胶囊几乎重合，
+        // 不再向进度条区域溢出透明假触摸区。
+        layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, capsuleWindowHeightPx())
         // 注意：此处 View 可能尚未真正加入 WindowManager，此时调用
         // updateViewLayout() 无效。窗口级位移统一在 onAttachedToWindow() 之后应用。
         setBackgroundColor(Color.TRANSPARENT)
@@ -315,6 +321,18 @@ class LiquidGlassOverlayView(
 
         if (settings.barHeightDp != barHeightDp.value) {
             barHeightDp.value = settings.barHeightDp
+            // 路线 D：胶囊高度可变，窗口高度必须同步收缩/扩张，
+            // 否则又会出现窗口大于胶囊的假触摸区。
+            val lp = layoutParams
+            if (lp is WindowManager.LayoutParams) {
+                lp.height = capsuleWindowHeightPx()
+                if (isAttachedToWindow) {
+                    runCatching {
+                        context.getSystemService(WindowManager::class.java)
+                            ?.updateViewLayout(this, lp)
+                    }.onFailure { ModuleLog.error("updateViewLayout(height) failed", it) }
+                }
+            }
         }
 
         if (settings.barVerticalOffsetDp != barVerticalOffsetDp.value) {
@@ -594,7 +612,7 @@ private fun LiquidGlassOverlayContent(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(LIQUID_OVERLAY_HEIGHT_DP.dp)
+                .height((activeBarHeightDp + LIQUID_OVERLAY_BAR_PADDING_DP * 2).dp)
         ) {
             val reservedHorizontalPadding =
                 if (expandContentToWindow) {
@@ -610,16 +628,15 @@ private fun LiquidGlassOverlayContent(
                 minOf(308.dp, availableCapsuleWidth)
             }.coerceAtLeast(224.dp)
 
-            // 路线 C：窗口/Box 高度严格等于胶囊。Row 直接贴着 Box 底边（距底 11dp），
-            // 不再需要任何内容层平移——整体位移由窗口自身移动完成。
+            // 路线 D：窗口/Box 高度 = 胶囊 + 上下留白（各 11dp），胶囊垂直居中。
+            // 整体位移仍由窗口自身移动完成（见 applyWindowVerticalOffset）。
             Row(
                 modifier = (if (expandContentToWindow) {
                     Modifier.fillMaxWidth()
                 } else {
                     Modifier
                 })
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 11.dp)
+                    .align(Alignment.Center)
                     .padding(
                         horizontal = if (expandContentToWindow) {
                             LIQUID_OVERLAY_EDGE_CONTENT_INSET_DP.dp
