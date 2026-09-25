@@ -158,7 +158,8 @@ class LiquidGlassOverlayView(
 
     init {
         layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, overlayHeightPx)
-        applyWindowVerticalOffset()
+        // 注意：此处 View 可能尚未真正加入 WindowManager，此时调用
+        // updateViewLayout() 无效。窗口级位移统一在 onAttachedToWindow() 之后应用。
         setBackgroundColor(Color.TRANSPARENT)
         isFocusable = false
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
@@ -252,6 +253,13 @@ class LiquidGlassOverlayView(
         return super.dispatchTouchEvent(event)
     }
 
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        // View 已真正加入 WindowManager，此时才能安全地修改 LayoutParams.y。
+        // 用 post{} 确保在窗口完成 attach 后再执行一次当前位置应用。
+        post { applyWindowVerticalOffset() }
+    }
+
     override fun onDetachedFromWindow() {
         BottomAdjacentControlAvoidance.stop(mainWindowView)
         val animator = presenceAnimator
@@ -302,6 +310,8 @@ class LiquidGlassOverlayView(
      * negate the user value: positive -> move down, negative -> move up.
      */
     private fun applyWindowVerticalOffset() {
+        // 只在 View 真正 attach 到 WindowManager 后才修改窗口位置。
+        if (!isAttachedToWindow) return
         val params = layoutParams as? WindowManager.LayoutParams ?: return
         val offsetPx =
             (barVerticalOffsetDp.value * resources.displayMetrics.density).roundToInt()

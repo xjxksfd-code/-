@@ -78,6 +78,9 @@ object ModuleSettingsStore {
     val CaptureWidthChoices = listOf(320, 400, 480, 560, 640)
     val BarHeightChoices = listOf(64, 58, 52, 46, 40)
     val BarVerticalOffsetChoices = listOf(-20, -15, -10, -5, 0, 5, 10, 15, 20)
+    // 整体上下位置的合法范围（含负数）。仅做越界保护，不把负数本身视为非法。
+    const val BarVerticalOffsetMinDp = -20
+    const val BarVerticalOffsetMaxDp = 20
     val DefaultFramePeriod = PreferredFramePeriodMillis
     val DefaultCaptureWidth = PreferredCaptureWidth
     val DefaultBarHeightDp = PreferredBarHeightDp
@@ -107,7 +110,7 @@ object ModuleSettingsStore {
             barVerticalOffsetDp = preferences.getInt(
                 KeyBarVerticalOffsetDp,
                 DefaultBarVerticalOffsetDp,
-            ),
+            ).coerceIn(BarVerticalOffsetMinDp, BarVerticalOffsetMaxDp),
             revision = preferences.getLong(KeyRevision, 0L),
         )
         revisionSource.updateAndGet { current -> maxOf(current, settings.revision) }
@@ -166,14 +169,16 @@ object ModuleSettingsStore {
         val diagnosticLogging = current.getColumnIndex(ColumnDiagnosticLogging)
         val framePeriod = current.getColumnIndex(ColumnFramePeriod)
         val captureWidth = current.getColumnIndex(ColumnCaptureWidth)
-        val barHeightDp = current.getColumnIndex(ColumnBarHeightDp)
-        val barVerticalOffsetDp = current.getColumnIndex(ColumnBarVerticalOffsetDp)
+        val barHeightDpIndex = current.getColumnIndex(ColumnBarHeightDp)
+        val barVerticalOffsetDpIndex = current.getColumnIndex(ColumnBarVerticalOffsetDp)
         val revision = current.getColumnIndex(ColumnRevision)
+        // 这里判断的是“列索引”是否有效（-1 表示列不存在），不是判断“位置值”的正负。
+        // barVerticalOffsetDp 允许 -20~20（含负数），绝不能因为值为负而拒绝。
         if (!current.moveToFirst() ||
             glassBar < 0 || controlAvoidance < 0 || dynamicBackdrop < 0 ||
             diagnosticLogging < 0 || revision < 0
-            || framePeriod < 0 || captureWidth < 0 || barHeightDp < 0
-            || barVerticalOffsetDp < 0
+            || framePeriod < 0 || captureWidth < 0 || barHeightDpIndex < 0
+            || barVerticalOffsetDpIndex < 0
         ) {
             return null
         }
@@ -184,8 +189,11 @@ object ModuleSettingsStore {
             diagnosticLoggingEnabled = current.getInt(diagnosticLogging) != 0,
             framePeriodMillis = current.getInt(framePeriod),
             captureWidth = current.getInt(captureWidth),
-            barHeightDp = current.getInt(barHeightDp),
-            barVerticalOffsetDp = current.getInt(barVerticalOffsetDp),
+            barHeightDp = current.getInt(barHeightDpIndex),
+            // 只做合法范围保护，负数本身完全合法（-20~20）。
+            barVerticalOffsetDp = current
+                .getInt(barVerticalOffsetDpIndex)
+                .coerceIn(BarVerticalOffsetMinDp, BarVerticalOffsetMaxDp),
             revision = current.getLong(revision),
         )
     }
@@ -228,7 +236,7 @@ object ModuleSettingsStore {
             barVerticalOffsetDp = properties.getIntProperty(
                 KeyBarVerticalOffsetDp,
                 DefaultBarVerticalOffsetDp,
-            ),
+            ).coerceIn(BarVerticalOffsetMinDp, BarVerticalOffsetMaxDp),
             revision = properties.getProperty(KeyRevision)?.toLongOrNull() ?: return null,
         )
     }
