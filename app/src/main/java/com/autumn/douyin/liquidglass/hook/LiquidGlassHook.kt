@@ -472,6 +472,7 @@ class LiquidGlassHook : IXposedHookLoadPackage {
 
 private data class OverlayWindowGeometry(
     val width: Int,
+    val height: Int,
     val x: Int,
     val baseY: Int,
     val edgeToEdge: Boolean,
@@ -483,22 +484,23 @@ private fun createOverlayLayoutParams(
 ): WindowManager.LayoutParams {
     return WindowManager.LayoutParams(
         geometry.width,
-        (LIQUID_OVERLAY_HEIGHT_DP * activity.resources.displayMetrics.density).roundToInt(),
+        geometry.height,
         WindowManager.LayoutParams.TYPE_APPLICATION_PANEL,
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
             WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
         PixelFormat.TRANSLUCENT,
     ).apply {
-        // Gravity.TOP + a computed baseY defines the resting position at the bottom
-        // of the screen. This (instead of Gravity.BOTTOM) is what gives the
-        // "vertical position" slider real travel on BOTH sides: with Gravity.BOTTOM
-        // the window is already flush with the screen bottom, so any attempt to push
-        // it further DOWN was clamped by the system, making every offset beyond ~20dp
-        // a no-op. With Gravity.TOP we can freely move the window up or down.
-        gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+        // The overlay window stays pinned to the bottom edge (gravity = BOTTOM,
+        // y = 0). We deliberately DO NOT move the window to implement the
+        // vertical-position slider: a TYPE_APPLICATION_PANEL child window is
+        // hard-clamped by the system so its bottom edge can never go past the
+        // parent bottom edge, which made every DOWN offset a no-op. The slider is
+        // instead applied inside the content (Modifier.offset in
+        // LiquidGlassOverlayView), which is not subject to that clamp.
+        gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
         x = geometry.x
-        y = geometry.baseY
+        y = 0
         setTitle("DouyinLiquidGlassOverlay")
         token = activity.window.decorView.windowToken
         windowAnimations = 0

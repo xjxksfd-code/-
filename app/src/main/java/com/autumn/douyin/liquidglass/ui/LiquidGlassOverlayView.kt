@@ -94,6 +94,8 @@ internal const val LIQUID_OVERLAY_MAX_CONTENT_WIDTH_DP = 384f
 internal const val LIQUID_OVERLAY_MIN_CONTENT_WIDTH_DP = 300f
 internal const val LIQUID_OVERLAY_HORIZONTAL_ALLOWANCE_DP = 32f
 internal const val LIQUID_OVERLAY_EDGE_CONTENT_INSET_DP = 16f
+// 窗口上下各预留的边量（dp），给内容 Modifier.offset 平移留出渲染表面。
+internal const val LIQUID_OVERLAY_VERTICAL_SLACK_DP = 160f
 private const val Android13CaptureResumeDelayMillis = 1500L
 
 class LiquidGlassOverlayView(
@@ -124,6 +126,8 @@ class LiquidGlassOverlayView(
     private var controlAvoidanceEnabled: Boolean
     private var barHeightDp = mutableStateOf(ModuleSettingsStore.DefaultBarHeightDp)
     private var barVerticalOffsetDp = mutableStateOf(ModuleSettingsStore.DefaultBarVerticalOffsetDp)
+    // 内容层实际使用的像素平移（正=下移，负=上移），由 applyWindowVerticalOffset() 驱动。
+    private var barContentOffsetPx = mutableStateOf(0)
 
     /**
      * Resting window Y (in host-window coordinates) for the overlay window.
@@ -166,10 +170,13 @@ class LiquidGlassOverlayView(
         get() = savedStateController.savedStateRegistry
 
     init {
-        layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, overlayHeightPx)
+        val slackPx = (LIQUID_OVERLAY_VERTICAL_SLACK_DP * resources.displayMetrics.density).roundToInt()
+        layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, overlayHeightPx + slackPx * 2)
         // 注意：此处 View 可能尚未真正加入 WindowManager，此时调用
         // updateViewLayout() 无效。窗口级位移统一在 onAttachedToWindow() 之后应用。
         setBackgroundColor(Color.TRANSPARENT)
+        clipChildren = false
+        clipToPadding = false
         isFocusable = false
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
 
@@ -195,6 +202,7 @@ class LiquidGlassOverlayView(
                 expandContentToWindow = expandContentToWindow,
                 barHeightDp = { barHeightDp.value },
                 barVerticalOffsetDp = { barVerticalOffsetDp.value },
+                barContentOffsetPx = { barContentOffsetPx.value },
             )
         }
         addView(composeView)
@@ -326,52 +334,16 @@ class LiquidGlassOverlayView(
      */
     // 允许宿主 (LiquidGlassHook) 在 addView 之后从外部再应用一次，避免时序竞争。
     internal fun applyWindowVerticalOffset() {
-        Log.i(
-            "DLG_VOFFSET",
-            "CALL attached=$isAttachedToWindow valueDp=${barVerticalOffsetDp.value} " +
-                "layoutParamsType=${layoutParams?.javaClass?.simpleName}",
-        )
-        // 只在 View 真正 attach 到 WindowManager 后才修改窗口位置。
-        if (!isAttachedToWindow) {
-            Log.i("DLG_VOFFSET", "ABORT not attached")
-            return
-        }
-        val params = layoutParams as? WindowManager.LayoutParams
-        if (params == null) {
-            Log.i("DLG_VOFFSET", "ABORT layoutParams is not WindowManager.LayoutParams")
-            return
-        }
         val offsetPx =
             (barVerticalOffsetDp.value * resources.displayMetrics.density).roundToInt()
-        // Gravity.TOP: baseWindowY puts the bar at its natural position (bottom of the
-        // screen, taken from the native bar bounds). A positive user value must move the
-        // bar DOWN, which with Gravity.TOP means a LARGER y. Using base + offset (instead
-        // of the old Gravity.BOTTOM -offset trick) removes the system's bottom-edge clamp,
-        // so every slider step produces real, proportional travel.
-        val desiredY = baseWindowY + offsetPx
         Log.i(
             "DLG_VOFFSET",
-            "APPLY desiredY=$desiredY offsetPx=$offsetPx yBefore=${params.y} gravity=${params.gravity}",
+            "APPLY contentOffsetPx=$offsetPx valueDp=${barVerticalOffsetDp.value} " +
+                "attached=$isAttachedToWindow",
         )
-        if (params.y == desiredY) {
-            Log.i("DLG_VOFFSET", "SKIP already at desiredY=$desiredY")
-            return
-        }
-        params.y = desiredY
-        val windowManager =
-            context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
-        if (windowManager == null) {
-            Log.i("DLG_VOFFSET", "ABORT no WindowManager")
-            return
-        }
-        val result = runCatching { windowManager.updateViewLayout(this, params) }
-        result.onFailure { Log.i("DLG_VOFFSET", "FAIL ${it.javaClass.simpleName}: ${it.message}") }
-        if (result.isSuccess) {
-            Log.i(
-                "DLG_VOFFSET",
-                "DONE yAfter=${(layoutParams as? WindowManager.LayoutParams)?.y}",
-            )
-        }
+        // 不再移动窗口（窗口底边被系统钳制在屏幕底，下移必然无效）。
+        // 改为把偏移交给 Compose 内容层，通过 Modifier.offset 平移胶囊。
+        barContentOffsetPx.value = offsetPx
     }
 
     override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
@@ -590,10 +562,12 @@ private fun LiquidGlassOverlayContent(
     expandContentToWindow: Boolean,
     barHeightDp: () -> Int,
     barVerticalOffsetDp: () -> Int,
+    barContentOffsetPx: () -> Int,
 ) {
     val density = LocalDensity.current
     val activeBarHeightDp = barHeightDp()
     val activeBarVerticalOffsetDp = barVerticalOffsetDp()
+    val activeBarContentOffsetPx = barContentOffsetPx()
     val tabs = remember {
         listOf(
             DouyinTab("首页", Icons.Rounded.Cottage),
@@ -607,7 +581,7 @@ private fun LiquidGlassOverlayContent(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(LIQUID_OVERLAY_HEIGHT_DP.dp),
+                .height((LIQUID_OVERLAY_HEIGHT_DP + LIQUID_OVERLAY_VERTICAL_SLACK_DP * 2).dp),
         ) {
             val reservedHorizontalPadding =
                 if (expandContentToWindow) {
@@ -623,16 +597,19 @@ private fun LiquidGlassOverlayContent(
                 minOf(308.dp, availableCapsuleWidth)
             }.coerceAtLeast(224.dp)
 
-            // The overlay window itself is shifted vertically (see
-            // applyWindowVerticalOffset); inside the window the capsule keeps a
-            // fixed resting position, so no per-item offset is needed here.
+            // 窗口已扩大为 96dp + 2*slack，Box 高度跟随。Row 改为垂直居中，
+            // 再用 offset 把它拉回原始视觉位置（距底 11dp），然后叠上用户滑条位移。
+            val restingOffsetPx = with(density) {
+                (LIQUID_OVERLAY_VERTICAL_SLACK_DP.dp - 11.dp).roundToPx()
+            }
             Row(
                 modifier = (if (expandContentToWindow) {
                     Modifier.fillMaxWidth()
                 } else {
                     Modifier
                 })
-                    .align(Alignment.BottomCenter)
+                    .align(Alignment.Center)
+                    .offset { IntOffset(0, restingOffsetPx + activeBarContentOffsetPx) }
                     .padding(bottom = 11.dp)
                     .padding(
                         horizontal = if (expandContentToWindow) {
