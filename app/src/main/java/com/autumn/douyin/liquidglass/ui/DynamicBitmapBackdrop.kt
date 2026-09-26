@@ -151,9 +151,7 @@ class DynamicBitmapBackdrop : Backdrop {
         if (
             compositeBitmap != null &&
             !compositeBitmap.isRecycled &&
-            !compositeRect.isEmpty &&
-            compositeBitmap.width == compositeRect.width() &&
-            compositeBitmap.height == compositeRect.height()
+            !compositeRect.isEmpty
         ) {
             val rootPosition = coordinates?.positionInRoot() ?: Offset.Zero
             val shouldLogMapping = !hasLoggedCompositeMapping
