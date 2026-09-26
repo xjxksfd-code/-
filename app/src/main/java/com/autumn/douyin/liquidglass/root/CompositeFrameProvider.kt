@@ -3,43 +3,32 @@ package com.autumn.douyin.liquidglass.root
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Rect
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.Process
 import android.os.SystemClock
-import android.view.PixelCopy
-import android.view.View
-import android.view.Window
 import androidx.compose.ui.unit.IntOffset
 import com.autumn.douyin.liquidglass.ModuleLog
 import com.autumn.douyin.liquidglass.ui.DynamicBitmapBackdrop
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
+import java.io.DataInputStream
+import java.io.DataOutputStream
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.Socket
+import java.nio.ByteBuffer
 
 /**
- * Grabs the host window's pixels in-process with [PixelCopy] and feeds them to
- * the backdrop as the glass source.
+ * Streams the display-composited frame through the root daemon. Pixels are
+ * decoded directly into bitmap buffers and are never inspected or persisted.
  *
- * This replaces the previous root-daemon transport (loopback socket +
- * `app_process` daemon). No root, no `su`, no cross-process channel and no
- * root-only display-capture backends are involved anymore — which is exactly
- * why the glass backdrop keeps working on modern Android builds where the old
- * display-capture backends are unavailable.
- *
- * Two coordinate spaces are tracked per capture region:
- * - `windowRect` : the source rectangle handed to [PixelCopy] (window coords)
- * - `screenRect` : the same region in screen coords, handed to the backdrop
- *
- * Because the glass overlay lives in its own window, capturing the main window
- * never contains the glass bar itself. The old frame-synchronised
- * capture-exclusion pulsing hack is therefore no longer required.
- *
- * The public surface (`hasDeliveredFrame`, `onFirstFrame`,
- * `updateCaptureRegion`, `start`, `stop`) is unchanged; only the internals were
- * swapped, so callers such as `LiquidGlassOverlayView` need no changes.
+ * The transport is continuous: geometry updates flow to the daemon while frames
+ * flow back without waiting for a per-frame client request.
  */
 class CompositeFrameProvider(
     private val context: Context,
     private val backdrop: DynamicBitmapBackdrop,
-    private val sourceWindowProvider: () -> Window? = { null },
 ) {
     @Volatile
     var hasDeliveredFrame: Boolean = false
@@ -50,28 +39,23 @@ class CompositeFrameProvider(
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val geometryLock = Any()
-
-    /** Capture rect in the source window's coordinate space (for [PixelCopy]). */
-    private var windowRect = Rect()
-
-    /** The same rect translated to screen coordinates (for the backdrop). */
+    private val lifecycleLock = Any()
     private var screenRect = Rect()
-
-    private val captureRunnable = Runnable { captureNextFrame() }
+    private var pixelBuffer = ByteArray(0)
+    private var worker: Thread? = null
+    private val canLaunchDaemon =
+        context.packageName == CompositeFrameDaemonLauncher.MODULE_PACKAGE_NAME
+    private var loggedExternalDaemonWait = false
 
     @Volatile
     private var running = false
 
-    private var inFlight = false
-    private var consecutiveFailures = 0
-    private var successfulFrames = 0L
-    private var failedFrames = 0L
-    private var lastStatsTime = 0L
-    private var lastThrottledLogTime = 0L
+    @Volatile
+    private var activeSocket: Socket? = null
+
 
     fun updateCaptureRegion(captureRect: Rect, mainWindowOrigin: IntOffset) {
-        val nextWindowRect = if (captureRect.isEmpty) Rect() else Rect(captureRect)
-        val nextScreenRect = if (captureRect.isEmpty) {
+        val nextRect = if (captureRect.isEmpty) {
             Rect()
         } else {
             Rect(
@@ -83,141 +67,225 @@ class CompositeFrameProvider(
         }
 
         synchronized(geometryLock) {
-            if (windowRect == nextWindowRect && screenRect == nextScreenRect) return
-            val wasEmpty = windowRect.isEmpty
-            windowRect = nextWindowRect
-            screenRect = nextScreenRect
-            if (wasEmpty || nextWindowRect.isEmpty) {
-                ModuleLog.info {
-                    "composite capture region window=$nextWindowRect screen=$nextScreenRect"
-                }
+            if (screenRect == nextRect) return
+            val previousRect = Rect(screenRect)
+            screenRect = Rect(nextRect)
+            if (previousRect.isEmpty || nextRect.isEmpty) {
+                ModuleLog.info { "composite provider screen rect=$nextRect" }
             }
         }
     }
 
     fun start() {
-        if (running) return
-        running = true
-        ModuleLog.info {
-            "composite provider ready (in-process pixelcopy) pkg=${context.packageName}"
+        synchronized(lifecycleLock) {
+            if (running || worker?.isAlive == true) return
+            running = true
+            val thread = Thread(
+                ::runForever,
+                "liquid-glass-composite-provider",
+            )
+            worker = thread
+            thread.start()
         }
-        mainHandler.post(captureRunnable)
+        ModuleLog.info("composite provider ready")
     }
 
     fun stop() {
-        if (!running) return
-        running = false
-        mainHandler.removeCallbacks(captureRunnable)
+        synchronized(lifecycleLock) {
+            running = false
+            activeSocket?.close()
+            worker?.interrupt()
+            worker = null
+        }
         mainHandler.post {
             backdrop.clearCompositeFrame()
         }
     }
 
-    private fun captureNextFrame() {
-        if (!running || inFlight) return
-
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            logThrottled { "composite pixelcopy unsupported: sdk=${Build.VERSION.SDK_INT}" }
-            scheduleNext(FailureRetryMs)
-            return
+    private fun runForever() {
+        runCatching {
+            Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_DISPLAY)
         }
-
-        val sourceWindow = sourceWindowProvider()
-        if (sourceWindow == null) {
-            logThrottled { "composite pixelcopy skipped: source window unavailable" }
-            scheduleNext(FailureRetryMs)
-            return
-        }
-
-        if (!isWindowDrawable(sourceWindow)) {
-            // During bar show/hide animations and activity transitions the host
-            // window can momentarily lose its backing surface. Requesting a
-            // PixelCopy then throws "Window doesn't have a backing surface!",
-            // so bail out early and drop any stale frame instead of sampling
-            // old / uninitialised pixels into the glass.
-            logThrottled { "composite pixelcopy skipped: window has no backing surface" }
-            degradeBackdropOnFailure()
-            scheduleNext(FailureRetryMs)
-            return
-        }
-
-        val target = synchronized(geometryLock) {
-            if (windowRect.isEmpty) {
-                null
-            } else {
-                CaptureTarget(Rect(windowRect), Rect(screenRect))
-            }
-        } ?: run {
-            scheduleNext(IdleRetryMs)
-            return
-        }
-
-        val sourceRect = target.sourceRect
-        val width = sourceRect.width()
-        val height = sourceRect.height()
-        if (width <= 0 || height <= 0) {
-            scheduleNext(IdleRetryMs)
-            return
-        }
-
-        val bitmap = createBitmap(width, height)
-        if (bitmap == null) {
-            logThrottled { "composite pixelcopy bitmap allocation failed ${width}x$height" }
-            scheduleNext(FailureRetryMs)
-            return
-        }
-
-        val deliverRect = target.screenRect
-        val captureTimestamp = SystemClock.uptimeMillis()
-        inFlight = true
-
-        val listener = PixelCopy.OnPixelCopyFinishedListener { result ->
-            inFlight = false
-            if (running) {
-                if (result == PixelCopy.SUCCESS) {
-                    consecutiveFailures = 0
-                    onFrameCaptured(bitmap, deliverRect, captureTimestamp)
-                    scheduleNext(FrameIntervalMs)
-                } else {
-                    consecutiveFailures += 1
-                    failedFrames += 1
-                    logThrottled {
-                        "composite pixelcopy failed result=$result rect=$sourceRect " +
-                            "failures=$consecutiveFailures"
+        var lastLaunchAttempt = 0L
+        while (running) {
+            val socket = runCatching { connect() }.getOrNull()
+            if (socket == null) {
+                val now = System.currentTimeMillis()
+                if (now - lastLaunchAttempt >= DaemonRetryMs) {
+                    lastLaunchAttempt = now
+                    if (canLaunchDaemon) {
+                        val launchResult = CompositeFrameDaemonLauncher.start(context)
+                        if (!launchResult.first) {
+                            ModuleLog.error { "composite daemon launch failed: ${launchResult.second}" }
+                        }
+                    } else if (!loggedExternalDaemonWait) {
+                        loggedExternalDaemonWait = true
+                        ModuleLog.info {
+                            "waiting for module app to start composite daemon on " +
+                                "127.0.0.1:${CompositeFrameDaemonLauncher.PORT}"
+                        }
                     }
-                    degradeBackdropOnFailure()
-                    scheduleNext(FailureRetryMs)
                 }
+                if (!sleepInterruptible(DaemonRetryMs)) return
+                continue
             }
-        }
 
-        try {
-            PixelCopy.request(sourceWindow, sourceRect, bitmap, listener, mainHandler)
-        } catch (throwable: Throwable) {
-            inFlight = false
-            consecutiveFailures += 1
-            failedFrames += 1
-            logThrottled { "composite pixelcopy threw: ${throwable.message}" }
-            degradeBackdropOnFailure()
-            scheduleNext(FailureRetryMs)
+            try {
+                socket.use {
+                    activeSocket = it
+                    streamFrames(it)
+                }
+            } catch (throwable: Throwable) {
+                if (running) {
+                    ModuleLog.error("composite socket stream ended", throwable)
+                }
+            } finally {
+                activeSocket = null
+            }
+
+            if (running && !sleepInterruptible(ReconnectDelayMs)) return
         }
     }
 
-    private fun onFrameCaptured(bitmap: Bitmap, screenRect: Rect, captureTimestamp: Long) {
-        if (running && !screenRect.isEmpty) {
-            backdrop.updateCompositeFrame(bitmap, screenRect, captureTimestamp)
+    private fun connect(): Socket {
+        val socket = Socket()
+        socket.tcpNoDelay = true
+        socket.receiveBufferSize = ReceiveBufferBytes
+        socket.sendBufferSize = SendBufferBytes
+        socket.connect(
+            InetSocketAddress(
+                InetAddress.getLoopbackAddress(),
+                CompositeFrameDaemonLauncher.PORT,
+            ),
+            ConnectTimeoutMs,
+        )
+        socket.soTimeout = ReadTimeoutMs
+        return socket
+    }
+
+    private fun streamFrames(socket: Socket) {
+        val input = DataInputStream(
+            BufferedInputStream(socket.getInputStream(), ReceiveBufferBytes),
+        )
+        val output = DataOutputStream(
+            BufferedOutputStream(socket.getOutputStream(), SendBufferBytes),
+        )
+        output.writeUTF(CompositeFrameDaemonLauncher.HANDSHAKE_TOKEN)
+        output.flush()
+        var lastSentRect: Rect? = null
+
+        fun sendCurrentRect() {
+            val nextRect = synchronized(geometryLock) { Rect(screenRect) }
+            if (nextRect == lastSentRect) return
+            output.writeInt(nextRect.left)
+            output.writeInt(nextRect.top)
+            output.writeInt(nextRect.right)
+            output.writeInt(nextRect.bottom)
+            output.flush()
+            lastSentRect = Rect(nextRect)
         }
-        if (!hasDeliveredFrame) {
-            hasDeliveredFrame = true
-            onFirstFrame?.invoke()
+
+        sendCurrentRect()
+
+        while (running) {
+            val frameStart = System.nanoTime()
+            val header = CompositeFrameProtocol.read(input)
+            val status = header.status
+            val width = header.width
+            val height = header.height
+            val left = header.left
+            val top = header.top
+            val right = header.right
+            val bottom = header.bottom
+            val byteCount = header.byteCount
+            val frameTimestamp = header.frameTimestamp
+
+            if (status == CompositeFrameProtocol.StatusIdle) {
+                sendCurrentRect()
+                if (!sleepInterruptible(IdleSleepMs)) return
+                continue
+            }
+            if (status == CompositeFrameProtocol.StatusError) {
+                val message = CompositeFrameProtocol.readError(input)
+                logThrottled { "composite daemon error: $message" }
+                if (!sleepInterruptible(ErrorSleepMs)) return
+                continue
+            }
+
+            val expectedBytes = width.toLong() * height.toLong() * BytesPerPixel
+            if (
+                width <= 0 ||
+                height <= 0 ||
+                expectedBytes > MaxFrameBytes ||
+                byteCount.toLong() != expectedBytes
+            ) {
+                throw IOExceptionProtocol(
+                    "invalid composite frame metadata width=$width height=$height bytes=$byteCount",
+                )
+            }
+
+            val responseRect = Rect(left, top, right, bottom)
+            if (responseRect.isEmpty) {
+                throw IOExceptionProtocol("composite response rect is empty")
+            }
+
+            val pixels = ensurePixelBuffer(byteCount)
+            input.readFully(pixels, 0, byteCount)
+            sendCurrentRect()
+            val shouldLogLatency =
+                successfulFrames == 0L || successfulFrames % LatencyLogFrames == LatencyLogFrames - 1L
+            if (shouldLogLatency) {
+                ModuleLog.info {
+                    "composite receive latency: captureToReceiveMs=" +
+                        (SystemClock.uptimeMillis() - frameTimestamp)
+                }
+            }
+            val bitmap = createBitmap(width, height)
+                ?: throw IOExceptionProtocol("composite bitmap allocation failed")
+            bitmap.copyPixelsFromBuffer(ByteBuffer.wrap(pixels, 0, byteCount))
+
+            if (!hasDeliveredFrame) {
+                hasDeliveredFrame = true
+                mainHandler.post { onFirstFrame?.invoke() }
+            }
+            deliverFrame(bitmap, responseRect, frameTimestamp, shouldLogLatency)
+
+            successfulFrames += 1
+            framesSinceStats += 1
+            val frameElapsed = elapsedMillis(frameStart)
+            elapsedSum += frameElapsed
+            elapsedMax = maxOf(elapsedMax, frameElapsed)
+            if (successfulFrames == 1L) {
+                ModuleLog.info {
+                    "composite first frame ok: rect=$responseRect bitmap=${width}x$height " +
+                        "elapsedMs=$frameElapsed"
+                }
+            }
+            reportStats()
         }
-        successfulFrames += 1
-        if (successfulFrames == 1L) {
+    }
+
+    private fun ensurePixelBuffer(byteCount: Int): ByteArray {
+        if (pixelBuffer.size < byteCount) {
+            pixelBuffer = ByteArray(byteCount)
+        }
+        return pixelBuffer
+    }
+
+    private fun deliverFrame(
+        bitmap: Bitmap,
+        rect: Rect,
+        timestamp: Long,
+        shouldLogLatency: Boolean,
+    ) {
+        if (!running) return
+        if (shouldLogLatency) {
             ModuleLog.info {
-                "composite first frame ok: rect=$screenRect bitmap=${bitmap.width}x${bitmap.height}"
+                "composite submit latency: captureToSubmitMs=" +
+                    (SystemClock.uptimeMillis() - timestamp)
             }
         }
-        reportStats()
+        backdrop.updateCompositeFrame(bitmap, rect, timestamp)
     }
 
     private fun createBitmap(width: Int, height: Int): Bitmap? =
@@ -225,45 +293,39 @@ class CompositeFrameProvider(
             Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         }.getOrNull()
 
-    private fun isWindowDrawable(window: Window): Boolean {
-        val decor = window.peekDecorView() ?: return false
-        if (!decor.isAttachedToWindow) return false
-        if (decor.windowVisibility != View.VISIBLE) return false
-        return decor.width > 0 && decor.height > 0
-    }
-
-    /**
-     * When a capture fails the cached frame is either stale (the window
-     * geometry moved on) or only partially written. Clearing it lets the
-     * backdrop fall back to its neutral default fill instead of stretching
-     * old / uninitialised pixels across the glass.
-     */
-    private fun degradeBackdropOnFailure() {
-        runCatching { backdrop.clearCompositeFrame() }
-    }
-
-    private fun scheduleNext(delayMillis: Long) {
-        if (!running) return
-        mainHandler.postDelayed(captureRunnable, delayMillis.coerceAtLeast(0L))
-    }
-
     private fun reportStats() {
         val now = System.currentTimeMillis()
         if (lastStatsTime == 0L) {
             lastStatsTime = now
             return
         }
-        if (now - lastStatsTime < StatsIntervalMs) return
+        if (now - lastStatsTime < StatsIntervalMs || framesSinceStats == 0L) return
 
         val seconds = (now - lastStatsTime) / 1000.0
         ModuleLog.info {
-            "composite stats: frames=$successfulFrames failed=$failedFrames " +
-                "fps=${"%.2f".format(successfulFrames / seconds)}"
+            "composite stats: totalFrames=$successfulFrames, " +
+                "intervalFrames=$framesSinceStats, fps=${"%.2f".format(framesSinceStats / seconds)}, " +
+                "avgMs=${"%.2f".format(elapsedSum / framesSinceStats)}, " +
+                "maxMs=${"%.2f".format(elapsedMax)}"
         }
         lastStatsTime = now
-        successfulFrames = 0
-        failedFrames = 0
+        framesSinceStats = 0
+        elapsedSum = 0.0
+        elapsedMax = 0.0
     }
+
+    private fun sleepInterruptible(millis: Long): Boolean {
+        return try {
+            Thread.sleep(millis)
+            true
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            false
+        }
+    }
+
+    private fun elapsedMillis(startNanos: Long): Double =
+        (System.nanoTime() - startNanos) / 1_000_000.0
 
     private fun logThrottled(message: () -> String) {
         if (!ModuleLog.isEnabled) return
@@ -274,16 +336,28 @@ class CompositeFrameProvider(
         }
     }
 
-    private class CaptureTarget(
-        val sourceRect: Rect,
-        val screenRect: Rect,
-    )
+    private class IOExceptionProtocol(message: String) : java.io.IOException(message)
 
     private companion object {
-        const val FrameIntervalMs = 16L
-        const val IdleRetryMs = 32L
-        const val FailureRetryMs = 250L
+        const val BytesPerPixel = 4L
+        const val MaxFrameBytes = 16L * 1024 * 1024
+        const val ReceiveBufferBytes = 512 * 1024
+        const val SendBufferBytes = 64 * 1024
+        const val DaemonRetryMs = 500L
+        const val ReconnectDelayMs = 100L
+        const val IdleSleepMs = 32L
+        const val ErrorSleepMs = 100L
         const val StatsIntervalMs = 5_000L
         const val ThrottleLogMs = 1_000L
+        const val ConnectTimeoutMs = 250
+        const val ReadTimeoutMs = 1_000
+        const val LatencyLogFrames = 300L
     }
+
+    private var successfulFrames = 0L
+    private var framesSinceStats = 0L
+    private var lastStatsTime = 0L
+    private var lastThrottledLogTime = 0L
+    private var elapsedSum = 0.0
+    private var elapsedMax = 0.0
 }

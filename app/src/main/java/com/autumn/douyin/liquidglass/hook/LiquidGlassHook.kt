@@ -399,7 +399,6 @@ class LiquidGlassHook : IXposedHookLoadPackage {
             val compositeFrameProvider = CompositeFrameProvider(
                 context = activity.applicationContext,
                 backdrop = dynamicBackdrop,
-                sourceWindowProvider = { activity.window },
             )
             val overlay = LiquidGlassOverlayView(
                 context = activity,
