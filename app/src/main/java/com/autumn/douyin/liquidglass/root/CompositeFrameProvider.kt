@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.view.PixelCopy
+import android.view.View
 import android.view.Window
 import androidx.compose.ui.unit.IntOffset
 import com.autumn.douyin.liquidglass.ModuleLog
@@ -128,6 +129,18 @@ class CompositeFrameProvider(
             return
         }
 
+        if (!isWindowDrawable(sourceWindow)) {
+            // During bar show/hide animations and activity transitions the host
+            // window can momentarily lose its backing surface. Requesting a
+            // PixelCopy then throws "Window doesn't have a backing surface!",
+            // so bail out early and drop any stale frame instead of sampling
+            // old / uninitialised pixels into the glass.
+            logThrottled { "composite pixelcopy skipped: window has no backing surface" }
+            degradeBackdropOnFailure()
+            scheduleNext(FailureRetryMs)
+            return
+        }
+
         val target = synchronized(geometryLock) {
             if (windowRect.isEmpty) {
                 null
@@ -172,6 +185,7 @@ class CompositeFrameProvider(
                         "composite pixelcopy failed result=$result rect=$sourceRect " +
                             "failures=$consecutiveFailures"
                     }
+                    degradeBackdropOnFailure()
                     scheduleNext(FailureRetryMs)
                 }
             }
@@ -181,7 +195,10 @@ class CompositeFrameProvider(
             PixelCopy.request(sourceWindow, sourceRect, bitmap, listener, mainHandler)
         } catch (throwable: Throwable) {
             inFlight = false
+            consecutiveFailures += 1
+            failedFrames += 1
             logThrottled { "composite pixelcopy threw: ${throwable.message}" }
+            degradeBackdropOnFailure()
             scheduleNext(FailureRetryMs)
         }
     }
@@ -207,6 +224,23 @@ class CompositeFrameProvider(
         runCatching {
             Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         }.getOrNull()
+
+    private fun isWindowDrawable(window: Window): Boolean {
+        val decor = window.peekDecorView() ?: return false
+        if (!decor.isAttachedToWindow) return false
+        if (decor.windowVisibility != View.VISIBLE) return false
+        return decor.width > 0 && decor.height > 0
+    }
+
+    /**
+     * When a capture fails the cached frame is either stale (the window
+     * geometry moved on) or only partially written. Clearing it lets the
+     * backdrop fall back to its neutral default fill instead of stretching
+     * old / uninitialised pixels across the glass.
+     */
+    private fun degradeBackdropOnFailure() {
+        runCatching { backdrop.clearCompositeFrame() }
+    }
 
     private fun scheduleNext(delayMillis: Long) {
         if (!running) return

@@ -84,6 +84,11 @@ class DynamicBitmapBackdrop : Backdrop {
     }
 
     fun clearCompositeFrame() {
+        // Idempotent: avoid redundant state writes under neverEqualPolicy, which
+        // would otherwise trigger a recomposition on every failed capture retry.
+        if (compositeFrame == null && compositeCaptureRect.isEmpty && compositeFrameTimestamp == 0L) {
+            return
+        }
         compositeFrame = null
         compositeCaptureRect = Rect()
         compositeFrameTimestamp = 0L
@@ -146,7 +151,9 @@ class DynamicBitmapBackdrop : Backdrop {
         if (
             compositeBitmap != null &&
             !compositeBitmap.isRecycled &&
-            !compositeRect.isEmpty
+            !compositeRect.isEmpty &&
+            compositeBitmap.width == compositeRect.width() &&
+            compositeBitmap.height == compositeRect.height()
         ) {
             val rootPosition = coordinates?.positionInRoot() ?: Offset.Zero
             val shouldLogMapping = !hasLoggedCompositeMapping
