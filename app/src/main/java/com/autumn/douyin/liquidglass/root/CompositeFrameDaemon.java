@@ -2,6 +2,7 @@ package com.autumn.douyin.liquidglass.root;
 
 import android.graphics.Bitmap;
 import android.graphics.Rect;
+import android.os.Looper;
 import android.os.Process;
 import android.os.SystemClock;
 import java.io.BufferedInputStream;
@@ -131,7 +132,49 @@ public final class CompositeFrameDaemon {
         }
     }
 
+    /**
+     * The daemon is launched through {@code app_process} with an explicit main
+     * class, so the process never gets a main {@link Looper}. Several framework
+     * capture APIs (for example {@code ScreenCapture.createSyncCaptureListener}
+     * used by the modern {@code captureDisplay} path) construct a
+     * {@code Handler} bound to {@code Looper.getMainLooper()}; with a null main
+     * looper they fail with:
+     *
+     * <pre>Attempt to read from field 'android.os.MessageQueue
+     * android.os.Looper.mQueue' on a null object reference in method
+     * 'void android.os.Handler.&lt;init&gt;(android.os.Looper,
+     * android.os.Handler$Callback, boolean, boolean)'</pre>
+     *
+     * <p>Publish a main looper on a dedicated thread before any capture backend
+     * is created so those callbacks have a message queue to run on.
+     */
+    private static void prepareDaemonMainLooper() {
+        if (Looper.getMainLooper() != null) return;
+
+        Thread looperThread = new Thread(() -> {
+            try {
+                Looper.prepareMainLooper();
+            } catch (IllegalStateException alreadyPrepared) {
+                return;
+            }
+            Looper.loop();
+        }, "liquid-glass-daemon-looper");
+        looperThread.setDaemon(true);
+        looperThread.start();
+
+        long deadline = SystemClock.uptimeMillis() + 2000L;
+        while (Looper.getMainLooper() == null && SystemClock.uptimeMillis() < deadline) {
+            try {
+                Thread.sleep(5L);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+    }
+
     public static void main(String[] args) throws Exception {
+        prepareDaemonMainLooper();
         if (hasProbeCaptureArgument(args)) {
             runCaptureProbe();
             return;
