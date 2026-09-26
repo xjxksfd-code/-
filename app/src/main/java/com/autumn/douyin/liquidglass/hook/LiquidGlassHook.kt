@@ -28,7 +28,6 @@ import com.autumn.douyin.liquidglass.ui.LIQUID_OVERLAY_VERTICAL_SLACK_DP
 import com.autumn.douyin.liquidglass.ui.LIQUID_OVERLAY_MAX_CONTENT_WIDTH_DP
 import com.autumn.douyin.liquidglass.ui.LIQUID_OVERLAY_MIN_CONTENT_WIDTH_DP
 import com.autumn.douyin.liquidglass.ui.LiquidGlassOverlayView
-import com.autumn.douyin.liquidglass.ui.ScreenCaptureExclusion
 import com.autumn.douyin.liquidglass.ui.OverlayController
 import com.autumn.douyin.liquidglass.ui.BottomAdjacentControlAvoidance
 import com.autumn.douyin.liquidglass.settings.ModuleSettings
@@ -400,6 +399,7 @@ class LiquidGlassHook : IXposedHookLoadPackage {
             val compositeFrameProvider = CompositeFrameProvider(
                 context = activity.applicationContext,
                 backdrop = dynamicBackdrop,
+                sourceWindowProvider = { activity.window },
             )
             val overlay = LiquidGlassOverlayView(
                 context = activity,

@@ -230,20 +230,14 @@ class LiquidGlassOverlayView(
 
         addOnAttachStateChangeListener(object : OnAttachStateChangeListener {
             override fun onViewAttachedToWindow(view: View) {
-                ScreenCaptureExclusion.start(view)
-                // 帧同步脉冲门控：每收到一帧合成帧（与守护进程抓帧同相），
-                // 立刻把底栏临时排除出捕获帧，使“下一帧”的玻璃背景干净，
-                // 避免底栏自己叠自己造成发黑/残影；脉冲结束后恢复为截图可见。
-                backdrop.setOnCompositeFrameArrivedListener {
-                    post { ScreenCaptureExclusion.pulseExclusion(view) }
-                }
+                // 采集已改为进程内 PixelCopy：抓的是宿主主窗口，而玻璃覆盖层位于
+                // 独立子窗口（TYPE_APPLICATION_PANEL），天生不会被拍进玻璃背景。
+                // 因此旧的“帧同步脉冲排除”hack 彻底废弃，这里不再需要任何排除逻辑。
                 startBackdropIfEligible()
                 if (controlAvoidanceEnabled) BottomAdjacentControlAvoidance.start(mainWindowView)
             }
 
             override fun onViewDetachedFromWindow(view: View) {
-                backdrop.setOnCompositeFrameArrivedListener(null)
-                ScreenCaptureExclusion.stop(view)
                 stopBackdrop()
                 val activity = context as? Activity ?: return
                 if (activity.isFinishing || activity.isDestroyed) {
@@ -255,7 +249,6 @@ class LiquidGlassOverlayView(
 
     override fun onWindowVisibilityChanged(visibility: Int) {
         super.onWindowVisibilityChanged(visibility)
-        ScreenCaptureExclusion.refresh(this)
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
@@ -410,7 +403,6 @@ class LiquidGlassOverlayView(
 
     override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
         super.onWindowFocusChanged(hasWindowFocus)
-        ScreenCaptureExclusion.refresh(this)
         if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.TIRAMISU) {
             if (hasWindowFocus) {
                 startBackdropIfEligible()
