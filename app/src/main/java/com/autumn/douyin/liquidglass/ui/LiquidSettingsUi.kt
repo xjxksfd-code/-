@@ -105,6 +105,10 @@ fun LiquidSettingsScreen(
     captureWidth: Int,
     barHeightDp: Int,
     barVerticalOffsetDp: Int,
+    useCustomIcon: Boolean,
+    hasCustomIcon: Boolean,
+    hidePlusButton: Boolean,
+    iconRotationEnabled: Boolean,
     onGlassBarChange: (Boolean) -> Unit,
     onControlAvoidanceChange: (Boolean) -> Unit,
     onDynamicBackdropChange: (Boolean) -> Unit,
@@ -113,6 +117,11 @@ fun LiquidSettingsScreen(
     onCaptureWidthChange: (Int) -> Unit,
     onBarHeightChange: (Int) -> Unit,
     onBarVerticalOffsetChange: (Int) -> Unit,
+    onHidePlusButtonChange: (Boolean) -> Unit,
+    onUseCustomIconChange: (Boolean) -> Unit,
+    onIconRotationChange: (Boolean) -> Unit,
+    onPickCustomIcon: () -> Unit,
+    onClearCustomIcon: () -> Unit,
     onRestartDouyin: () -> Unit,
     onRestartDaemon: () -> Unit,
     onExportDiagnostics: () -> Unit,
@@ -196,6 +205,49 @@ fun LiquidSettingsScreen(
                 selectedValue = barVerticalOffsetDp,
                 enabled = glassBarEnabled,
                 onValueFinished = onBarVerticalOffsetChange,
+            )
+            SettingsDivider()
+            SettingsRow(
+                icon = Icons.Rounded.Star,
+                title = "显示发布图标",
+                subtitle = if (!hidePlusButton) "显示发布按钮" else "隐藏发布按钮",
+                enabled = glassBarEnabled,
+                selected = !hidePlusButton && glassBarEnabled,
+                onSelected = { onHidePlusButtonChange(!it) },
+            )
+            SettingsDivider()
+            SettingsRow(
+                icon = Icons.Rounded.Image,
+                title = "自定义发布图标",
+                subtitle = if (useCustomIcon) "使用自选图片作为发布图标" else "使用默认液态加号",
+                enabled = glassBarEnabled && !hidePlusButton,
+                selected = useCustomIcon && !hidePlusButton,
+                onSelected = onUseCustomIconChange,
+            )
+            SettingsDivider()
+            SettingsActionRow(
+                icon = Icons.Rounded.Image,
+                title = "选择发布图标图片",
+                buttonText = if (hasCustomIcon) "更换" else "选择",
+                enabled = glassBarEnabled && !hidePlusButton && useCustomIcon,
+                onClick = onPickCustomIcon,
+            )
+            SettingsDivider()
+            SettingsActionRow(
+                icon = Icons.Rounded.Close,
+                title = "清除发布图标图片",
+                buttonText = "清除",
+                enabled = glassBarEnabled && !hidePlusButton && useCustomIcon && hasCustomIcon,
+                onClick = onClearCustomIcon,
+            )
+            SettingsDivider()
+            SettingsRow(
+                icon = Icons.Rounded.Refresh,
+                title = "图标旋转",
+                subtitle = if (iconRotationEnabled) "发布图标缓慢旋转" else "发布图标静止",
+                enabled = glassBarEnabled && useCustomIcon && !hidePlusButton,
+                selected = iconRotationEnabled && useCustomIcon && !hidePlusButton,
+                onSelected = onIconRotationChange,
             )
         }
 
@@ -377,6 +429,56 @@ private fun SettingsRow(
             enabled = enabled,
             onSelected = onSelected,
         )
+    }
+}
+
+@Composable
+private fun SettingsActionRow(
+    icon: ImageVector,
+    title: String,
+    buttonText: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(62.dp)
+            .alpha(if (enabled) 1f else 0.42f),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = SettingsBlue,
+        )
+        Spacer(Modifier.width(12.dp))
+        Text(
+            text = title,
+            color = SettingsPrimaryText,
+            fontSize = 16.sp,
+            lineHeight = 21.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.weight(1f),
+        )
+        Box(
+            modifier = Modifier
+                .height(34.dp)
+                .clip(RoundedCornerShape(17.dp))
+                .background(SettingsButtonBrush)
+                .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(17.dp))
+                .clickable(enabled = enabled, onClick = onClick)
+                .padding(horizontal = 16.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = buttonText,
+                color = SettingsPrimaryText,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                fontWeight = FontWeight.Medium,
+            )
+        }
     }
 }
 

@@ -2,11 +2,14 @@ package com.autumn.douyin.liquidglass.status
 
 import android.content.ClipData
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import androidx.core.content.FileProvider
+import java.io.File
 import java.util.concurrent.Executors
 import androidx.activity.compose.setContent
 import androidx.activity.ComponentActivity
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.WindowCompat
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -24,11 +27,33 @@ class ModuleStatusActivity : ComponentActivity() {
     private var daemonStatus by mutableStateOf("")
     private var captureStatus by mutableStateOf("检测中")
     private var actionStatus by mutableStateOf("就绪")
+    private var hasCustomIcon by mutableStateOf(false)
     private var captureCapability: CompositeFrameDaemonLauncher.CaptureCapability? by mutableStateOf(
         null,
     )
     private val rootActionExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "liquid-glass-root-actions").apply { isDaemon = true }
+    }
+
+    private val customIconPicker = registerForActivityResult(
+        ActivityResultContracts.GetContent(),
+    ) { uri: Uri? ->
+        if (uri == null) {
+            return@registerForActivityResult
+        }
+        actionStatus = "正在导入图标"
+        rootActionExecutor.execute {
+            val copied = copyUriToCustomIconPath(uri)
+            runOnUiThread {
+                if (copied) {
+                    hasCustomIcon = true
+                    actionStatus = "发布图标已更新"
+                    updateSettings(settings.copy(useCustomIcon = true))
+                } else {
+                    actionStatus = "图标导入失败"
+                }
+            }
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -55,6 +80,10 @@ class ModuleStatusActivity : ComponentActivity() {
                     captureWidth = settings.captureWidth,
                     barHeightDp = settings.barHeightDp,
                     barVerticalOffsetDp = settings.barVerticalOffsetDp,
+                    useCustomIcon = settings.useCustomIcon,
+                    hasCustomIcon = hasCustomIcon,
+                    hidePlusButton = settings.hidePlusButton,
+                    iconRotationEnabled = settings.iconRotationEnabled,
                     onGlassBarChange = { updateSettings(settings.copy(glassBarEnabled = it)) },
                     onControlAvoidanceChange = {
                         updateSettings(settings.copy(controlAvoidanceEnabled = it))
@@ -77,6 +106,17 @@ class ModuleStatusActivity : ComponentActivity() {
                     onBarVerticalOffsetChange = {
                         updateSettings(settings.copy(barVerticalOffsetDp = it))
                     },
+                    onHidePlusButtonChange = {
+                        updateSettings(settings.copy(hidePlusButton = it))
+                    },
+                    onUseCustomIconChange = {
+                        updateSettings(settings.copy(useCustomIcon = it))
+                    },
+                    onIconRotationChange = {
+                        updateSettings(settings.copy(iconRotationEnabled = it))
+                    },
+                    onPickCustomIcon = { customIconPicker.launch("image/*") },
+                    onClearCustomIcon = ::clearCustomIcon,
                     onRestartDouyin = ::forceStopDouyin,
                     onRestartDaemon = ::restartDaemon,
                     onExportDiagnostics = ::exportDiagnostics,
@@ -94,6 +134,11 @@ class ModuleStatusActivity : ComponentActivity() {
             runOnUiThread {
                 this.captureCapability = captureCapability
                 captureStatus = captureCapabilityLabel(captureCapability)
+            }
+
+            val iconExists = customIconFileExists()
+            runOnUiThread {
+                hasCustomIcon = iconExists
             }
 
             val current = ModuleSettingsStore.read(this)
@@ -275,4 +320,40 @@ class ModuleStatusActivity : ComponentActivity() {
         process.inputStream.readBytes()
         process.waitFor() == 0
     }.getOrDefault(false)
+
+    private fun copyUriToCustomIconPath(uri: Uri): Boolean = runCatching {
+        val targetDir = File(CUSTOM_ICON_DIR)
+        val target = File(CUSTOM_ICON_PATH)
+        val cache = File(cacheDir, "custom-icon")
+        cache.mkdirs()
+        val temp = File(cache, "icon.png")
+        contentResolver.openInputStream(uri)?.use { input ->
+            temp.outputStream().use { output -> input.copyTo(output) }
+        } ?: return@runCatching false
+        val script = "mkdir -p " + targetDir.absolutePath +
+            " && cp " + temp.absolutePath + " " + target.absolutePath +
+            " && chmod 644 " + target.absolutePath
+        runRootCommand(script)
+    }.getOrDefault(false)
+
+    private fun clearCustomIcon() {
+        actionStatus = "处理中"
+        rootActionExecutor.execute {
+            runRootCommand("rm -f " + CUSTOM_ICON_PATH)
+            runOnUiThread {
+                hasCustomIcon = false
+                actionStatus = "发布图标已清除"
+                updateSettings(settings.copy(useCustomIcon = false, iconRotationEnabled = false))
+            }
+        }
+    }
+
+    private fun customIconFileExists(): Boolean =
+        runRootCommand("test -f " + CUSTOM_ICON_PATH)
+
+    companion object {
+        const val CUSTOM_ICON_DIR =
+            "/storage/emulated/0/Android/data/com.ss.android.ugc.aweme/files/liquid-glass"
+        const val CUSTOM_ICON_PATH = "$CUSTOM_ICON_DIR/icon.png"
+    }
 }

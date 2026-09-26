@@ -89,6 +89,24 @@ import com.autumn.douyin.liquidglass.theme.DemoMiuixTheme
 import top.yukonga.miuix.kmp.blur.Backdrop
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.theme.LocalContentColor
+import android.graphics.BitmapFactory
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.path
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.Dp
+import com.autumn.douyin.liquidglass.theme.isInDarkTheme
 import kotlin.math.roundToInt
 
 internal const val LIQUID_OVERLAY_HEIGHT_DP = 96f
@@ -108,6 +126,48 @@ internal const val LIQUID_OVERLAY_TOUCH_PROBE_PASSTHROUGH = false
 // 窗口上下各预留的边量（dp），给内容 Modifier.offset 平移留出渲染表面。
 internal const val LIQUID_OVERLAY_VERTICAL_SLACK_DP = 160f
 private const val Android13CaptureResumeDelayMillis = 1500L
+
+private const val CUSTOM_ICON_PATH =
+    "/storage/emulated/0/Android/data/com.ss.android.ugc.aweme/files/liquid-glass/icon.png"
+
+private val DefaultPlusIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "DefaultPlusIcon",
+        defaultWidth = 28.dp,
+        defaultHeight = 28.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(
+            fill = null,
+            stroke = SolidColor(ComposeColor.Black),
+            strokeLineWidth = 1.8f,
+            strokeLineJoin = StrokeJoin.Round,
+        ) {
+            moveTo(7.5f, 3f)
+            lineTo(16.5f, 3f)
+            arcTo(6f, 6f, 0f, false, true, 22.5f, 9f)
+            lineTo(22.5f, 15f)
+            arcTo(6f, 6f, 0f, false, true, 16.5f, 21f)
+            lineTo(7.5f, 21f)
+            arcTo(6f, 6f, 0f, false, true, 1.5f, 15f)
+            lineTo(1.5f, 9f)
+            arcTo(6f, 6f, 0f, false, true, 7.5f, 3f)
+            close()
+        }
+        path(
+            fill = null,
+            stroke = SolidColor(ComposeColor.Black),
+            strokeLineWidth = 1.8f,
+            strokeLineCap = StrokeCap.Round,
+        ) {
+            moveTo(8.5f, 12f)
+            lineTo(15.5f, 12f)
+            moveTo(12f, 8.5f)
+            lineTo(12f, 15.5f)
+        }
+    }.build()
+}
 
 class LiquidGlassOverlayView(
     context: Context,
@@ -143,6 +203,9 @@ class LiquidGlassOverlayView(
     private var controlAvoidanceEnabled: Boolean
     private var barHeightDp = mutableStateOf(ModuleSettingsStore.DefaultBarHeightDp)
     private var barVerticalOffsetDp = mutableStateOf(ModuleSettingsStore.DefaultBarVerticalOffsetDp)
+    private var useCustomIcon = mutableStateOf(false)
+    private var hidePlusButton = mutableStateOf(false)
+    private var iconRotationEnabled = mutableStateOf(false)
     // 路线 C：不再放大窗口，也不再做内容层平移。窗口尺寸严格等于胶囊高度
     // (LIQUID_OVERLAY_HEIGHT_DP)，整体上下位移通过移动窗口自身 (LayoutParams.y)
     // 完成，从而让窗口的可触摸区收缩到只剩胶囊本身。
@@ -182,6 +245,9 @@ class LiquidGlassOverlayView(
         controlAvoidanceEnabled = initialSettings.controlAvoidanceEnabled
         barHeightDp.value = initialSettings.barHeightDp
         barVerticalOffsetDp.value = initialSettings.barVerticalOffsetDp
+        useCustomIcon.value = initialSettings.useCustomIcon
+        hidePlusButton.value = initialSettings.hidePlusButton
+        iconRotationEnabled.value = initialSettings.iconRotationEnabled
     }
 
     override val lifecycle: Lifecycle
@@ -224,6 +290,9 @@ class LiquidGlassOverlayView(
                 expandContentToWindow = expandContentToWindow,
                 barHeightDp = { barHeightDp.value },
                 barVerticalOffsetDp = { barVerticalOffsetDp.value },
+                useCustomIcon = { useCustomIcon.value },
+                hidePlusButton = { hidePlusButton.value },
+                iconRotationEnabled = { iconRotationEnabled.value },
             )
         }
         addView(composeView)
@@ -359,6 +428,15 @@ class LiquidGlassOverlayView(
 
         if (settings.barVerticalOffsetDp != barVerticalOffsetDp.value) {
             barVerticalOffsetDp.value = settings.barVerticalOffsetDp
+        }
+        if (useCustomIcon.value != settings.useCustomIcon) {
+            useCustomIcon.value = settings.useCustomIcon
+        }
+        if (hidePlusButton.value != settings.hidePlusButton) {
+            hidePlusButton.value = settings.hidePlusButton
+        }
+        if (iconRotationEnabled.value != settings.iconRotationEnabled) {
+            iconRotationEnabled.value = settings.iconRotationEnabled
         }
         Log.i(
             "DLG_VOFFSET",
@@ -616,10 +694,16 @@ private fun LiquidGlassOverlayContent(
     expandContentToWindow: Boolean,
     barHeightDp: () -> Int,
     barVerticalOffsetDp: () -> Int,
+    useCustomIcon: () -> Boolean,
+    hidePlusButton: () -> Boolean,
+    iconRotationEnabled: () -> Boolean,
 ) {
     val density = LocalDensity.current
     val activeBarHeightDp = barHeightDp()
     val activeBarVerticalOffsetDp = barVerticalOffsetDp()
+    val activeUseCustomIcon = useCustomIcon()
+    val activeHidePlusButton = hidePlusButton()
+    val activeIconRotationEnabled = iconRotationEnabled()
     val tabs = remember {
         listOf(
             DouyinTab("首页", Icons.Rounded.Cottage),
@@ -641,9 +725,15 @@ private fun LiquidGlassOverlayContent(
                 } else {
                     16.dp
                 }
+            // 发布按钮尺寸随底栏高度等比缩放（基准：64dp -> 50dp）。
+            val plusButtonScale = activeBarHeightDp / 64f
+            val plusButtonSize = 50.dp * plusButtonScale
+            val groupGap = 12.dp
+            val hidePlus = activeHidePlusButton
+            val reservedByPlus = if (hidePlus) 0.dp else (plusButtonSize + groupGap)
             val availableCapsuleWidth =
-                maxWidth - reservedHorizontalPadding
-            val capsuleWidth = if (expandContentToWindow) {
+                maxWidth - reservedByPlus - reservedHorizontalPadding
+            val capsuleWidth = if (expandContentToWindow || hidePlus) {
                 availableCapsuleWidth
             } else {
                 minOf(308.dp, availableCapsuleWidth)
@@ -672,7 +762,7 @@ private fun LiquidGlassOverlayContent(
                             capturePaddingPx = capturePaddingPx,
                         )
                     },
-                horizontalArrangement = Arrangement.Center,
+                horizontalArrangement = Arrangement.spacedBy(groupGap, Alignment.CenterHorizontally),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 FloatingBottomBar(
@@ -714,7 +804,117 @@ private fun LiquidGlassOverlayContent(
                         }
                     }
                 }
+
+                if (!hidePlus) {
+                    LiquidPlusButton(
+                        backdrop = backdrop,
+                        glassStyle = glassStyle,
+                        size = plusButtonSize,
+                        useCustomIcon = activeUseCustomIcon,
+                        iconRotationEnabled = activeIconRotationEnabled,
+                        onClick = controller::clickPlus,
+                        onLongClick = controller::longClickPlus,
+                    )
+                }
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun LiquidPlusButton(
+    backdrop: Backdrop,
+    glassStyle: FloatingGlassStyle,
+    size: Dp,
+    useCustomIcon: Boolean,
+    iconRotationEnabled: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.94f else 1f,
+        label = "plus-scale",
+    )
+
+    val customIconBitmap = remember(useCustomIcon) {
+        if (!useCustomIcon) {
+            null
+        } else {
+            runCatching {
+                BitmapFactory.decodeFile(CUSTOM_ICON_PATH)?.let { bitmap ->
+                    bitmap.copy(android.graphics.Bitmap.Config.ARGB_8888, false)
+                }
+            }.getOrNull()
+        }
+    }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "icon-rotation")
+    val iconRotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 8000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "icon-rotation",
+    )
+
+    Box(
+        modifier = modifier
+            .size(size)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .dropShadow(
+                shape = CircleShape,
+                shadow = Shadow(
+                    radius = 10.dp,
+                    color = ComposeColor.Black,
+                    alpha = glassStyle.shadowColor.alpha,
+                ),
+            )
+            .combinedClickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick,
+                onLongClick = { onLongClick() },
+            )
+            .drawFloatingGlassBackdrop(
+                backdrop = backdrop,
+                shape = CircleShape,
+                style = glassStyle,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (customIconBitmap != null) {
+            Image(
+                bitmap = customIconBitmap.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(size * 0.76f)
+                    .graphicsLayer {
+                        rotationZ = if (iconRotationEnabled) iconRotation else 0f
+                    }
+                    .clip(CircleShape),
+            )
+        } else {
+            val isInDark = isInDarkTheme()
+            Icon(
+                imageVector = DefaultPlusIcon,
+                contentDescription = null,
+                tint = if (isInDark) {
+                    ComposeColor.White.copy(alpha = 0.95f)
+                } else {
+                    ComposeColor.Black.copy(alpha = 0.95f)
+                },
+                modifier = Modifier.size(size * 0.56f),
+            )
         }
     }
 }
