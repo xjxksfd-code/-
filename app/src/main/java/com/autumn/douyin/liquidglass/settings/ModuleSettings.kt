@@ -30,6 +30,9 @@ data class ModuleSettings(
     val captureWidth: Int,
     val barHeightDp: Int,
     val barVerticalOffsetDp: Int,
+    val useCustomIcon: Boolean,
+    val hidePlusButton: Boolean,
+    val iconRotationEnabled: Boolean,
     val revision: Long,
 ) {
     fun withRevision(nextRevision: Long): ModuleSettings = copy(revision = nextRevision)
@@ -44,6 +47,9 @@ data class ModuleSettings(
             captureWidth = PreferredCaptureWidth,
             barHeightDp = PreferredBarHeightDp,
             barVerticalOffsetDp = PreferredBarVerticalOffsetDp,
+            useCustomIcon = false,
+            hidePlusButton = false,
+            iconRotationEnabled = false,
             revision = 0L,
         )
     }
@@ -62,6 +68,9 @@ object ModuleSettingsStore {
     private const val KeyCaptureWidth = "capture_width"
     private const val KeyBarHeightDp = "bar_height_dp"
     private const val KeyBarVerticalOffsetDp = "bar_vertical_offset_dp"
+    private const val KeyUseCustomIcon = "use_custom_icon"
+    private const val KeyHidePlusButton = "hide_plus_button"
+    private const val KeyIconRotation = "icon_rotation_enabled"
     private const val KeyRevision = "revision"
 
     const val ColumnGlassBar = "glass_bar_enabled"
@@ -72,6 +81,9 @@ object ModuleSettingsStore {
     const val ColumnCaptureWidth = "capture_width"
     const val ColumnBarHeightDp = "bar_height_dp"
     const val ColumnBarVerticalOffsetDp = "bar_vertical_offset_dp"
+    const val ColumnUseCustomIcon = "use_custom_icon"
+    const val ColumnHidePlusButton = "hide_plus_button"
+    const val ColumnIconRotation = "icon_rotation_enabled"
     const val ColumnRevision = "revision"
 
     val FramePeriodChoices = listOf(8, 11, 17, 22, 33)
@@ -112,6 +124,9 @@ object ModuleSettingsStore {
                 KeyBarVerticalOffsetDp,
                 DefaultBarVerticalOffsetDp,
             ).coerceIn(BarVerticalOffsetMinDp, BarVerticalOffsetMaxDp),
+            useCustomIcon = preferences.getBoolean(KeyUseCustomIcon, false),
+            hidePlusButton = preferences.getBoolean(KeyHidePlusButton, false),
+            iconRotationEnabled = preferences.getBoolean(KeyIconRotation, false),
             revision = preferences.getLong(KeyRevision, 0L),
         )
         revisionSource.updateAndGet { current -> maxOf(current, settings.revision) }
@@ -129,6 +144,9 @@ object ModuleSettingsStore {
             .putInt(KeyCaptureWidth, next.captureWidth)
             .putInt(KeyBarHeightDp, next.barHeightDp)
             .putInt(KeyBarVerticalOffsetDp, next.barVerticalOffsetDp)
+            .putBoolean(KeyUseCustomIcon, next.useCustomIcon)
+            .putBoolean(KeyHidePlusButton, next.hidePlusButton)
+            .putBoolean(KeyIconRotation, next.iconRotationEnabled)
             .putLong(KeyRevision, next.revision)
             .apply()
         context.contentResolver.notifyChange(SettingsUri, null)
@@ -145,6 +163,9 @@ object ModuleSettingsStore {
             ColumnCaptureWidth,
             ColumnBarHeightDp,
             ColumnBarVerticalOffsetDp,
+            ColumnUseCustomIcon,
+            ColumnHidePlusButton,
+            ColumnIconRotation,
             ColumnRevision,
         )
     ).apply {
@@ -158,6 +179,9 @@ object ModuleSettingsStore {
                 settings.captureWidth,
                 settings.barHeightDp,
                 settings.barVerticalOffsetDp,
+                settings.useCustomIcon,
+                settings.hidePlusButton,
+                settings.iconRotationEnabled,
                 settings.revision,
             )
         )
@@ -172,6 +196,9 @@ object ModuleSettingsStore {
         val captureWidth = current.getColumnIndex(ColumnCaptureWidth)
         val barHeightDpIndex = current.getColumnIndex(ColumnBarHeightDp)
         val barVerticalOffsetDpIndex = current.getColumnIndex(ColumnBarVerticalOffsetDp)
+        val useCustomIcon = current.getColumnIndex(ColumnUseCustomIcon)
+        val hidePlusButton = current.getColumnIndex(ColumnHidePlusButton)
+        val iconRotation = current.getColumnIndex(ColumnIconRotation)
         val revision = current.getColumnIndex(ColumnRevision)
         // 这里判断的是“列索引”是否有效（-1 表示列不存在），不是判断“位置值”的正负。
         // barVerticalOffsetDp 允许 -20~100（含负数），绝不能因为值为负而拒绝。
@@ -179,7 +206,8 @@ object ModuleSettingsStore {
             glassBar < 0 || controlAvoidance < 0 || dynamicBackdrop < 0 ||
             diagnosticLogging < 0 || revision < 0
             || framePeriod < 0 || captureWidth < 0 || barHeightDpIndex < 0
-            || barVerticalOffsetDpIndex < 0
+            || barVerticalOffsetDpIndex < 0 || useCustomIcon < 0
+            || hidePlusButton < 0 || iconRotation < 0
         ) {
             return null
         }
@@ -195,6 +223,9 @@ object ModuleSettingsStore {
             barVerticalOffsetDp = current
                 .getInt(barVerticalOffsetDpIndex)
                 .coerceIn(BarVerticalOffsetMinDp, BarVerticalOffsetMaxDp),
+            useCustomIcon = current.getInt(useCustomIcon) != 0,
+            hidePlusButton = current.getInt(hidePlusButton) != 0,
+            iconRotationEnabled = current.getInt(iconRotation) != 0,
             revision = current.getLong(revision),
         )
     }
@@ -208,6 +239,9 @@ object ModuleSettingsStore {
         put(KeyCaptureWidth, settings.captureWidth.toString())
         put(KeyBarHeightDp, settings.barHeightDp.toString())
         put(KeyBarVerticalOffsetDp, settings.barVerticalOffsetDp.toString())
+        put(KeyUseCustomIcon, settings.useCustomIcon.toString())
+        put(KeyHidePlusButton, settings.hidePlusButton.toString())
+        put(KeyIconRotation, settings.iconRotationEnabled.toString())
         put(KeyRevision, settings.revision.toString())
     }.storeToString()
 
@@ -238,6 +272,9 @@ object ModuleSettingsStore {
                 KeyBarVerticalOffsetDp,
                 DefaultBarVerticalOffsetDp,
             ).coerceIn(BarVerticalOffsetMinDp, BarVerticalOffsetMaxDp),
+            useCustomIcon = properties.getBooleanProperty(KeyUseCustomIcon, false),
+            hidePlusButton = properties.getBooleanProperty(KeyHidePlusButton, false),
+            iconRotationEnabled = properties.getBooleanProperty(KeyIconRotation, false),
             revision = properties.getProperty(KeyRevision)?.toLongOrNull() ?: return null,
         )
     }
@@ -251,6 +288,9 @@ object ModuleSettingsStore {
         put(ColumnCaptureWidth, settings.captureWidth)
         put(ColumnBarHeightDp, settings.barHeightDp)
         put(ColumnBarVerticalOffsetDp, settings.barVerticalOffsetDp)
+        put(ColumnUseCustomIcon, settings.useCustomIcon)
+        put(ColumnHidePlusButton, settings.hidePlusButton)
+        put(ColumnIconRotation, settings.iconRotationEnabled)
         put(ColumnRevision, settings.revision)
     }
 

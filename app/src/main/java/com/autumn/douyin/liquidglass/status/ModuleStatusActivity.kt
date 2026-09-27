@@ -3,7 +3,9 @@ package com.autumn.douyin.liquidglass.status
 import android.content.ClipData
 import android.content.Intent
 import android.os.Bundle
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.FileProvider
+import java.io.File
 import java.util.concurrent.Executors
 import androidx.activity.compose.setContent
 import androidx.activity.ComponentActivity
@@ -24,11 +26,31 @@ class ModuleStatusActivity : ComponentActivity() {
     private var daemonStatus by mutableStateOf("")
     private var captureStatus by mutableStateOf("检测中")
     private var actionStatus by mutableStateOf("就绪")
+    private var hasCustomIcon by mutableStateOf(false)
     private var captureCapability: CompositeFrameDaemonLauncher.CaptureCapability? by mutableStateOf(
         null,
     )
     private val rootActionExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "liquid-glass-root-actions").apply { isDaemon = true }
+    }
+
+    private val customIconPicker = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri == null) return@registerForActivityResult
+        actionStatus = "正在复制图片"
+        rootActionExecutor.execute {
+            val success = copyUriToCustomIconPath(uri)
+            runOnUiThread {
+                if (success) {
+                    hasCustomIcon = true
+                    updateSettings(settings.copy(useCustomIcon = true))
+                    actionStatus = "已设置自定义图标"
+                } else {
+                    actionStatus = "图片复制失败"
+                }
+            }
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -55,6 +77,10 @@ class ModuleStatusActivity : ComponentActivity() {
                     captureWidth = settings.captureWidth,
                     barHeightDp = settings.barHeightDp,
                     barVerticalOffsetDp = settings.barVerticalOffsetDp,
+                    useCustomIcon = settings.useCustomIcon,
+                    hasCustomIcon = hasCustomIcon,
+                    hidePlusButton = settings.hidePlusButton,
+                    iconRotationEnabled = settings.iconRotationEnabled,
                     onGlassBarChange = { updateSettings(settings.copy(glassBarEnabled = it)) },
                     onControlAvoidanceChange = {
                         updateSettings(settings.copy(controlAvoidanceEnabled = it))
@@ -77,6 +103,17 @@ class ModuleStatusActivity : ComponentActivity() {
                     onBarVerticalOffsetChange = {
                         updateSettings(settings.copy(barVerticalOffsetDp = it))
                     },
+                    onPickCustomIcon = { customIconPicker.launch("image/*") },
+                    onClearCustomIcon = { clearCustomIconFile() },
+                    onCustomIconToggle = { enabled ->
+                        updateSettings(settings.copy(useCustomIcon = enabled))
+                    },
+                    onHidePlusButtonChange = {
+                        updateSettings(settings.copy(hidePlusButton = it))
+                    },
+                    onIconRotationChange = {
+                        updateSettings(settings.copy(iconRotationEnabled = it))
+                    },
                     onRestartDouyin = ::forceStopDouyin,
                     onRestartDaemon = ::restartDaemon,
                     onExportDiagnostics = ::exportDiagnostics,
@@ -86,7 +123,9 @@ class ModuleStatusActivity : ComponentActivity() {
 
         rootActionExecutor.execute {
             val rootGranted = isRootGranted()
+            val hasIcon = customIconFileExists()
             runOnUiThread {
+                hasCustomIcon = hasIcon
                 rootStatus = if (rootGranted) "已授权" else "未授权"
             }
 
@@ -267,6 +306,47 @@ class ModuleStatusActivity : ComponentActivity() {
             }
         }
     }
+
+    private fun copyUriToCustomIconPath(uri: android.net.Uri): Boolean {
+        return runCatching {
+            val input = contentResolver.openInputStream(uri) ?: return false
+            val tempFile = File(cacheDir, "custom_icon.png")
+            tempFile.outputStream().use { output -> input.copyTo(output) }
+            input.close()
+
+            val dir = "/storage/emulated/0/Android/data/com.ss.android.ugc.aweme/files/liquid-glass"
+            val target = "$dir/icon.png"
+            val cmd = "mkdir -p '$dir' && " +
+                    "cp '${tempFile.absolutePath}' '$target' && " +
+                    "chmod 644 '$target'"
+            runRootCommand(cmd)
+        }.getOrDefault(false)
+    }
+
+    private fun clearCustomIconFile() {
+        rootActionExecutor.execute {
+            val target =
+                "/storage/emulated/0/Android/data/com.ss.android.ugc.aweme/files/liquid-glass/icon.png"
+            runRootCommand("rm -f '$target'")
+            runOnUiThread {
+                hasCustomIcon = false
+                updateSettings(settings.copy(useCustomIcon = false, iconRotationEnabled = false))
+                actionStatus = "已清除自定义图标"
+            }
+        }
+    }
+
+    private fun customIconFileExists(): Boolean = runCatching {
+        val target =
+            "/storage/emulated/0/Android/data/com.ss.android.ugc.aweme/files/liquid-glass/icon.png"
+        val process = ProcessBuilder(
+            "/system/bin/su", "-c",
+            "test -f '$target' && echo yes",
+        ).redirectErrorStream(true).start()
+        val output = process.inputStream.readBytes().decodeToString()
+        process.waitFor()
+        output.contains("yes")
+    }.getOrDefault(false)
 
     private fun runRootCommand(command: String): Boolean = runCatching {
         val process = ProcessBuilder("/system/bin/su", "-c", command)

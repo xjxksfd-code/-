@@ -105,6 +105,10 @@ fun LiquidSettingsScreen(
     captureWidth: Int,
     barHeightDp: Int,
     barVerticalOffsetDp: Int,
+    useCustomIcon: Boolean,
+    hasCustomIcon: Boolean,
+    hidePlusButton: Boolean,
+    iconRotationEnabled: Boolean,
     onGlassBarChange: (Boolean) -> Unit,
     onControlAvoidanceChange: (Boolean) -> Unit,
     onDynamicBackdropChange: (Boolean) -> Unit,
@@ -113,6 +117,11 @@ fun LiquidSettingsScreen(
     onCaptureWidthChange: (Int) -> Unit,
     onBarHeightChange: (Int) -> Unit,
     onBarVerticalOffsetChange: (Int) -> Unit,
+    onPickCustomIcon: () -> Unit,
+    onClearCustomIcon: () -> Unit,
+    onCustomIconToggle: (Boolean) -> Unit,
+    onHidePlusButtonChange: (Boolean) -> Unit,
+    onIconRotationChange: (Boolean) -> Unit,
     onRestartDouyin: () -> Unit,
     onRestartDaemon: () -> Unit,
     onExportDiagnostics: () -> Unit,
@@ -196,6 +205,45 @@ fun LiquidSettingsScreen(
                 selectedValue = barVerticalOffsetDp,
                 enabled = glassBarEnabled,
                 onValueFinished = onBarVerticalOffsetChange,
+            )
+            SettingsDivider()
+            SettingsRow(
+                icon = Icons.Rounded.Close,
+                title = "隐藏加号图标",
+                subtitle = if (hidePlusButton) "胶囊自动填满底部" else "显示加号按钮",
+                enabled = glassBarEnabled,
+                selected = hidePlusButton && glassBarEnabled,
+                onSelected = onHidePlusButtonChange,
+            )
+            SettingsDivider()
+            SettingsRow(
+                icon = Icons.Rounded.Image,
+                title = "自定义加号图标",
+                subtitle = when {
+                    !hasCustomIcon -> "点击下方按钮选择图片"
+                    useCustomIcon -> "已启用自定义图片"
+                    else -> "已关闭 · 图片已保存"
+                },
+                enabled = glassBarEnabled,
+                selected = useCustomIcon,
+                onSelected = onCustomIconToggle,
+            )
+            SettingsDivider()
+            SettingsActionRow(
+                icon = Icons.Rounded.Image,
+                title = "图标图片",
+                buttonText = if (hasCustomIcon) "更换图片" else "选择图片",
+                enabled = glassBarEnabled,
+                onClick = onPickCustomIcon,
+            )
+            SettingsDivider()
+            SettingsRow(
+                icon = Icons.Rounded.Refresh,
+                title = "图标旋转",
+                subtitle = if (iconRotationEnabled) "启用" else "图标保持静止",
+                enabled = glassBarEnabled && useCustomIcon && !hidePlusButton,
+                selected = iconRotationEnabled && useCustomIcon,
+                onSelected = onIconRotationChange,
             )
         }
 
@@ -377,6 +425,67 @@ private fun SettingsRow(
             enabled = enabled,
             onSelected = onSelected,
         )
+    }
+}
+
+@Composable
+private fun SettingsActionRow(
+    icon: ImageVector?,
+    title: String,
+    buttonText: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(62.dp)
+            .alpha(if (enabled) 1f else 0.42f),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (icon != null) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = SettingsBlue,
+            )
+            Spacer(Modifier.width(12.dp))
+        }
+        Text(
+            text = title,
+            color = SettingsPrimaryText,
+            fontSize = 16.sp,
+            lineHeight = 21.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.weight(1f),
+        )
+        Box(
+            modifier = Modifier
+                .height(34.dp)
+                .clip(RoundedCornerShape(17.dp))
+                .background(SettingsButtonBrush)
+                .border(
+                    width = 1.dp,
+                    color = Color.White.copy(alpha = 0.16f),
+                    shape = RoundedCornerShape(17.dp),
+                )
+                .clickable(
+                    enabled = enabled,
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = onClick,
+                )
+                .padding(horizontal = 16.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = buttonText,
+                color = SettingsPrimaryText,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+            )
+        }
     }
 }
 
