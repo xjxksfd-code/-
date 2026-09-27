@@ -84,11 +84,6 @@ class DynamicBitmapBackdrop : Backdrop {
     }
 
     fun clearCompositeFrame() {
-        // Idempotent: avoid redundant state writes under neverEqualPolicy, which
-        // would otherwise trigger a recomposition on every failed capture retry.
-        if (compositeFrame == null && compositeCaptureRect.isEmpty && compositeFrameTimestamp == 0L) {
-            return
-        }
         compositeFrame = null
         compositeCaptureRect = Rect()
         compositeFrameTimestamp = 0L
