@@ -18,7 +18,8 @@ import java.util.concurrent.atomic.AtomicLong
 
 private const val PreferredFramePeriodMillis = 17
 private const val PreferredCaptureWidth = 480
-private const val PreferredBarHeightDp = 64
+// 底栏高度基准：原为 64dp，整体调低 20% => 64 * 0.8 = 51dp。
+private const val PreferredBarHeightDp = 51
 private const val PreferredBarVerticalOffsetDp = 0
 
 data class ModuleSettings(
@@ -88,7 +89,11 @@ object ModuleSettingsStore {
 
     val FramePeriodChoices = listOf(8, 11, 17, 22, 33)
     val CaptureWidthChoices = listOf(320, 400, 480, 560, 640)
-    val BarHeightChoices = listOf(64, 58, 52, 46, 40)
+    // 底栏高度档位：整体调低 20%（原 64/58/52/46/40 -> 51/46/41/37/32，四舍五入取整）。
+    val BarHeightChoices = listOf(51, 46, 41, 37, 32)
+    // 高度合法范围（仅越界保护），档位超出时会被夹回。
+    const val BarHeightMinDp = 32
+    const val BarHeightMaxDp = 51
     // 整体上下位置：-20..100 全区间、每 5dp 一档（共 25 档），与 Min/MaxDp 对齐。
     val BarVerticalOffsetChoices = (-20..100 step 5).toList()
     // 整体上下位置的合法范围（含负数）。仅做越界保护，不把负数本身视为非法。
@@ -119,7 +124,7 @@ object ModuleSettingsStore {
             barHeightDp = preferences.getInt(
                 KeyBarHeightDp,
                 DefaultBarHeightDp,
-            ),
+            ).coerceIn(BarHeightMinDp, BarHeightMaxDp),
             barVerticalOffsetDp = preferences.getInt(
                 KeyBarVerticalOffsetDp,
                 DefaultBarVerticalOffsetDp,
@@ -218,7 +223,9 @@ object ModuleSettingsStore {
             diagnosticLoggingEnabled = current.getInt(diagnosticLogging) != 0,
             framePeriodMillis = current.getInt(framePeriod),
             captureWidth = current.getInt(captureWidth),
-            barHeightDp = current.getInt(barHeightDpIndex),
+            barHeightDp = current
+                .getInt(barHeightDpIndex)
+                .coerceIn(BarHeightMinDp, BarHeightMaxDp),
             // 只做合法范围保护，负数本身完全合法（-20~20）。
             barVerticalOffsetDp = current
                 .getInt(barVerticalOffsetDpIndex)
@@ -267,7 +274,7 @@ object ModuleSettingsStore {
             barHeightDp = properties.getIntProperty(
                 KeyBarHeightDp,
                 DefaultBarHeightDp,
-            ),
+            ).coerceIn(BarHeightMinDp, BarHeightMaxDp),
             barVerticalOffsetDp = properties.getIntProperty(
                 KeyBarVerticalOffsetDp,
                 DefaultBarVerticalOffsetDp,

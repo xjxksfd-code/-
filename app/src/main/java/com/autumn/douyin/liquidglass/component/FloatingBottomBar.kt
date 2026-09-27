@@ -230,7 +230,8 @@ fun FloatingBottomBar(
     backdrop: Backdrop,
     glassStyle: FloatingGlassStyle,
     tabsCount: Int,
-    barHeightDp: Int = 64,
+    // 与 ModuleSettings.DefaultBarHeightDp（51dp）保持一致，避免默认值返回旧范围。
+    barHeightDp: Int = 51,
     isBlurEnabled: Boolean = true,
     content: @Composable RowScope.() -> Unit
 ) {

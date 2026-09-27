@@ -329,11 +329,11 @@ private fun captureWidthSubtitle(value: Int): String = when (value) {
 }
 
 private fun barHeightSubtitle(value: Int): String = when (value) {
-    64 -> "标准高度"
-    58 -> "略薄"
-    52 -> "纤薄 · 推荐"
-    46 -> "更纤薄"
-    40 -> "极薄"
+    51 -> "标准高度"
+    46 -> "略薄"
+    41 -> "纤薄 · 推荐"
+    37 -> "更纤薄"
+    32 -> "极薄"
     else -> "自定义"
 }
 
