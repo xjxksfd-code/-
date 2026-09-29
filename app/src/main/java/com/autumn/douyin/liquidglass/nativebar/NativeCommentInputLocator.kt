@@ -43,8 +43,8 @@ object NativeCommentInputLocator {
         val scopeBottom = scopeTop(scope) + scope.height
         val bottomTolerance = (PanelBottomToleranceDp * density).toInt()
 
-        val anchor = findTextAnchor(scope, bandTop, MinHostHeightDp * density)
-            ?: if (requireTextAnchor) null else findCapsuleAnchor(
+        val anchor: View = findTextAnchor(scope, bandTop, MinHostHeightDp * density)
+            ?: (if (requireTextAnchor) null else findCapsuleAnchor(
                 scope = scope,
                 bandTop = bandTop,
                 scopeBottom = scopeBottom,
@@ -52,7 +52,7 @@ object NativeCommentInputLocator {
                 minWidth = minWidth,
                 minHeight = MinHostHeightDp * density,
                 maxHeight = MaxHostHeightDp * density,
-            )
+            ))
             ?: return null
 
         val host = resolveHost(scope, anchor, minWidth, MinHostHeightDp * density, MaxHostHeightDp * density)
