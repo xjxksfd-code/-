@@ -26,6 +26,7 @@ data class ModuleSettings(
     val glassBarEnabled: Boolean,
     val controlAvoidanceEnabled: Boolean,
     val dynamicBackdropEnabled: Boolean,
+    val commentGlassEnabled: Boolean,
     val diagnosticLoggingEnabled: Boolean,
     val framePeriodMillis: Int,
     val captureWidth: Int,
@@ -43,6 +44,7 @@ data class ModuleSettings(
             glassBarEnabled = true,
             controlAvoidanceEnabled = true,
             dynamicBackdropEnabled = true,
+            commentGlassEnabled = true,
             diagnosticLoggingEnabled = false,
             framePeriodMillis = PreferredFramePeriodMillis,
             captureWidth = PreferredCaptureWidth,
@@ -64,6 +66,7 @@ object ModuleSettingsStore {
     private const val KeyGlassBar = "glass_bar_enabled"
     private const val KeyControlAvoidance = "control_avoidance_enabled"
     private const val KeyDynamicBackdrop = "dynamic_backdrop_enabled"
+    private const val KeyCommentGlass = "comment_glass_enabled"
     private const val KeyDiagnosticLogging = "diagnostic_logging_enabled"
     private const val KeyFramePeriod = "frame_period_millis"
     private const val KeyCaptureWidth = "capture_width"
@@ -77,6 +80,7 @@ object ModuleSettingsStore {
     const val ColumnGlassBar = "glass_bar_enabled"
     const val ColumnControlAvoidance = "control_avoidance_enabled"
     const val ColumnDynamicBackdrop = "dynamic_backdrop_enabled"
+    const val ColumnCommentGlass = "comment_glass_enabled"
     const val ColumnDiagnosticLogging = "diagnostic_logging_enabled"
     const val ColumnFramePeriod = "frame_period_millis"
     const val ColumnCaptureWidth = "capture_width"
@@ -112,6 +116,7 @@ object ModuleSettingsStore {
             glassBarEnabled = preferences.getBoolean(KeyGlassBar, true),
             controlAvoidanceEnabled = preferences.getBoolean(KeyControlAvoidance, true),
             dynamicBackdropEnabled = preferences.getBoolean(KeyDynamicBackdrop, true),
+            commentGlassEnabled = preferences.getBoolean(KeyCommentGlass, true),
             diagnosticLoggingEnabled = preferences.getBoolean(KeyDiagnosticLogging, false),
             framePeriodMillis = preferences.getInt(
                 KeyFramePeriod,
@@ -144,6 +149,7 @@ object ModuleSettingsStore {
             .putBoolean(KeyGlassBar, next.glassBarEnabled)
             .putBoolean(KeyControlAvoidance, next.controlAvoidanceEnabled)
             .putBoolean(KeyDynamicBackdrop, next.dynamicBackdropEnabled)
+            .putBoolean(KeyCommentGlass, next.commentGlassEnabled)
             .putBoolean(KeyDiagnosticLogging, next.diagnosticLoggingEnabled)
             .putInt(KeyFramePeriod, next.framePeriodMillis)
             .putInt(KeyCaptureWidth, next.captureWidth)
@@ -163,6 +169,7 @@ object ModuleSettingsStore {
             ColumnGlassBar,
             ColumnControlAvoidance,
             ColumnDynamicBackdrop,
+            ColumnCommentGlass,
             ColumnDiagnosticLogging,
             ColumnFramePeriod,
             ColumnCaptureWidth,
@@ -179,6 +186,7 @@ object ModuleSettingsStore {
                 settings.glassBarEnabled,
                 settings.controlAvoidanceEnabled,
                 settings.dynamicBackdropEnabled,
+                settings.commentGlassEnabled,
                 settings.diagnosticLoggingEnabled,
                 settings.framePeriodMillis,
                 settings.captureWidth,
@@ -196,6 +204,7 @@ object ModuleSettingsStore {
         val glassBar = current.getColumnIndex(ColumnGlassBar)
         val controlAvoidance = current.getColumnIndex(ColumnControlAvoidance)
         val dynamicBackdrop = current.getColumnIndex(ColumnDynamicBackdrop)
+        val commentGlass = current.getColumnIndex(ColumnCommentGlass)
         val diagnosticLogging = current.getColumnIndex(ColumnDiagnosticLogging)
         val framePeriod = current.getColumnIndex(ColumnFramePeriod)
         val captureWidth = current.getColumnIndex(ColumnCaptureWidth)
@@ -209,6 +218,7 @@ object ModuleSettingsStore {
         // barVerticalOffsetDp 允许 -20~100（含负数），绝不能因为值为负而拒绝。
         if (!current.moveToFirst() ||
             glassBar < 0 || controlAvoidance < 0 || dynamicBackdrop < 0 ||
+            commentGlass < 0 ||
             diagnosticLogging < 0 || revision < 0
             || framePeriod < 0 || captureWidth < 0 || barHeightDpIndex < 0
             || barVerticalOffsetDpIndex < 0 || useCustomIcon < 0
@@ -220,6 +230,7 @@ object ModuleSettingsStore {
             glassBarEnabled = current.getInt(glassBar) != 0,
             controlAvoidanceEnabled = current.getInt(controlAvoidance) != 0,
             dynamicBackdropEnabled = current.getInt(dynamicBackdrop) != 0,
+            commentGlassEnabled = current.getInt(commentGlass) != 0,
             diagnosticLoggingEnabled = current.getInt(diagnosticLogging) != 0,
             framePeriodMillis = current.getInt(framePeriod),
             captureWidth = current.getInt(captureWidth),
@@ -241,6 +252,7 @@ object ModuleSettingsStore {
         put(KeyGlassBar, settings.glassBarEnabled.toString())
         put(KeyControlAvoidance, settings.controlAvoidanceEnabled.toString())
         put(KeyDynamicBackdrop, settings.dynamicBackdropEnabled.toString())
+        put(KeyCommentGlass, settings.commentGlassEnabled.toString())
         put(KeyDiagnosticLogging, settings.diagnosticLoggingEnabled.toString())
         put(KeyFramePeriod, settings.framePeriodMillis.toString())
         put(KeyCaptureWidth, settings.captureWidth.toString())
@@ -259,6 +271,7 @@ object ModuleSettingsStore {
             glassBarEnabled = properties.getBooleanProperty(KeyGlassBar, true),
             controlAvoidanceEnabled = properties.getBooleanProperty(KeyControlAvoidance, true),
             dynamicBackdropEnabled = properties.getBooleanProperty(KeyDynamicBackdrop, true),
+            commentGlassEnabled = properties.getBooleanProperty(KeyCommentGlass, true),
             diagnosticLoggingEnabled = properties.getBooleanProperty(
                 KeyDiagnosticLogging,
                 false,
@@ -290,6 +303,7 @@ object ModuleSettingsStore {
         put(ColumnGlassBar, settings.glassBarEnabled)
         put(ColumnControlAvoidance, settings.controlAvoidanceEnabled)
         put(ColumnDynamicBackdrop, settings.dynamicBackdropEnabled)
+        put(ColumnCommentGlass, settings.commentGlassEnabled)
         put(ColumnDiagnosticLogging, settings.diagnosticLoggingEnabled)
         put(ColumnFramePeriod, settings.framePeriodMillis)
         put(ColumnCaptureWidth, settings.captureWidth)

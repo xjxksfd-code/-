@@ -57,6 +57,8 @@ class LiquidGlassHook : IXposedHookLoadPackage {
     private var applicationContext: Context? = null
     @Volatile
     private var featureHooksInstalled = false
+    @Volatile
+    private var commentGlassHooksInstalled = false
     private val surfaceControlArgumentHook = object : XC_MethodHook() {
         override fun afterHookedMethod(param: MethodHookParam) {
             param.args.forEach { argument ->
@@ -324,6 +326,19 @@ class LiquidGlassHook : IXposedHookLoadPackage {
         if (settings.glassBarEnabled) {
             installFeatureHooksOnce()
         }
+        if (settings.commentGlassEnabled) {
+            installCommentGlassOnce()
+        } else if (commentGlassHooksInstalled) {
+            CommentGlassIntegration.refresh()
+        }
+    }
+
+    private fun installCommentGlassOnce() {
+        if (commentGlassHooksInstalled) return
+        val classLoader = applicationContext?.classLoader ?: return
+        commentGlassHooksInstalled = true
+        CommentGlassIntegration.install(classLoader)
+        CommentGlassIntegration.refresh()
     }
 
     private fun installFeatureHooksOnce() {

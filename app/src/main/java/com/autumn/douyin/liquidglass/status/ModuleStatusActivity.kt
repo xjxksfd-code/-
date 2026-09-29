@@ -72,6 +72,7 @@ class ModuleStatusActivity : ComponentActivity() {
                     glassBarEnabled = settings.glassBarEnabled,
                     controlAvoidanceEnabled = settings.controlAvoidanceEnabled,
                     dynamicBackdropEnabled = settings.dynamicBackdropEnabled,
+                    commentGlassEnabled = settings.commentGlassEnabled,
                     diagnosticLoggingEnabled = settings.diagnosticLoggingEnabled,
                     framePeriodMillis = settings.framePeriodMillis,
                     captureWidth = settings.captureWidth,
@@ -87,6 +88,9 @@ class ModuleStatusActivity : ComponentActivity() {
                     },
                     onDynamicBackdropChange = {
                         updateSettings(settings.copy(dynamicBackdropEnabled = it))
+                    },
+                    onCommentGlassChange = {
+                        updateSettings(settings.copy(commentGlassEnabled = it))
                     },
                     onDiagnosticLoggingChange = {
                         updateSettings(settings.copy(diagnosticLoggingEnabled = it))

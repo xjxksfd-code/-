@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Comment
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Info
@@ -100,6 +101,7 @@ fun LiquidSettingsScreen(
     glassBarEnabled: Boolean,
     controlAvoidanceEnabled: Boolean,
     dynamicBackdropEnabled: Boolean,
+    commentGlassEnabled: Boolean,
     diagnosticLoggingEnabled: Boolean,
     framePeriodMillis: Int,
     captureWidth: Int,
@@ -112,6 +114,7 @@ fun LiquidSettingsScreen(
     onGlassBarChange: (Boolean) -> Unit,
     onControlAvoidanceChange: (Boolean) -> Unit,
     onDynamicBackdropChange: (Boolean) -> Unit,
+    onCommentGlassChange: (Boolean) -> Unit,
     onDiagnosticLoggingChange: (Boolean) -> Unit,
     onFramePeriodChange: (Int) -> Unit,
     onCaptureWidthChange: (Int) -> Unit,
@@ -177,6 +180,15 @@ fun LiquidSettingsScreen(
                 enabled = glassBarEnabled,
                 selected = dynamicBackdropEnabled && glassBarEnabled,
                 onSelected = onDynamicBackdropChange,
+            )
+            SettingsDivider()
+            SettingsRow(
+                icon = Icons.Rounded.Comment,
+                title = "评论区玻璃",
+                subtitle = if (commentGlassEnabled) "评论面板使用半透明磨砂" else "关闭后使用原生不透明底",
+                enabled = true,
+                selected = commentGlassEnabled,
+                onSelected = onCommentGlassChange,
             )
             SettingsDivider()
             SettingsSliderRow(
