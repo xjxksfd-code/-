@@ -11,9 +11,11 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import com.autumn.douyin.liquidglass.ModuleLog
+import com.autumn.douyin.liquidglass.nativebar.NativeCommentInputLocator
 import com.autumn.douyin.liquidglass.nativebar.NativeCommentPanelLocator
 import com.autumn.douyin.liquidglass.settings.ModuleSettingsBridge
 import com.autumn.douyin.liquidglass.ui.CommentGlassFrameView
+import com.autumn.douyin.liquidglass.ui.CommentInputGlassView
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XposedHelpers
@@ -36,6 +38,7 @@ object CommentGlassIntegration {
     private const val CoverMinWidthRatio = 0.80f
     private const val CoverMinHeightRatio = 0.50f
     private const val CoverMinHeightDp = 8f
+    private const val InputFrameTag = "douyin-liquid-glass-comment-input-frame"
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val lastScanAt = AtomicLong(0L)
@@ -43,6 +46,8 @@ object CommentGlassIntegration {
     private val panelBackgrounds = WeakHashMap<View, Drawable?>()
     private val coverViews = Collections.newSetFromMap(WeakHashMap<View, Boolean>())
     private val coverBackgrounds = WeakHashMap<View, Drawable?>()
+    private val inputHosts = Collections.newSetFromMap(WeakHashMap<View, Boolean>())
+    private val inputBackgrounds = WeakHashMap<View, Drawable?>()
     private val observedRoots = Collections.newSetFromMap(WeakHashMap<View, Boolean>())
     private val applyingBackground = ThreadLocal<Boolean>()
 
@@ -60,6 +65,10 @@ object CommentGlassIntegration {
             val view = param.thisObject as? View ?: return
             if (isApplyingBackground()) return
             val drawable = param.args.getOrNull(0) as? Drawable ?: return
+            if (inputHosts.contains(view)) {
+                param.args[0] = null
+                return
+            }
             if (coverViews.contains(view)) {
                 if (isOpaqueDrawable(drawable)) param.args[0] = null
                 return
@@ -76,6 +85,10 @@ object CommentGlassIntegration {
             if (isApplyingBackground()) return
             val color = param.args.getOrNull(0) as? Int ?: return
             if (Color.alpha(color) < OpaqueAlphaThreshold) return
+            if (inputHosts.contains(view)) {
+                param.args[0] = Color.TRANSPARENT
+                return
+            }
             if (coverViews.contains(view)) {
                 param.args[0] = Color.TRANSPARENT
                 return
@@ -190,6 +203,7 @@ object CommentGlassIntegration {
         applyScrim(panel)
         clearCovers(panel)
         attachFrame(panel)
+        attachInputGlass(panel, root)
     }
 
     private fun applyScrim(panel: ViewGroup) {
@@ -253,9 +267,47 @@ object CommentGlassIntegration {
         return null
     }
 
+    /** Comment input bar (level 2): locate in panel first, then fall back to whole window. */
+    private fun attachInputGlass(panel: ViewGroup, root: ViewGroup) {
+        val host = NativeCommentInputLocator.find(panel)
+            ?: NativeCommentInputLocator.findInRoot(root)
+            ?: return
+        if (findInputGlass(host) != null) return
+        if (!inputHosts.contains(host)) {
+            inputHosts.add(host)
+            inputBackgrounds[host] = host.background
+        }
+        applyingBackground.set(true)
+        runCatching { host.setBackground(null) }
+            .onFailure { ModuleLog.error("failed to clear comment input background", it) }
+        applyingBackground.set(false)
+        val glass = CommentInputGlassView(host.context).apply { tag = InputFrameTag }
+        val params = ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+        )
+        runCatching { host.addView(glass, 0, params) }
+            .onSuccess {
+                ModuleLog.info {
+                    "comment input glass attached on " + host.javaClass.simpleName +
+                        " " + host.width + "x" + host.height
+                }
+            }
+            .onFailure { ModuleLog.error("failed to attach comment input glass", it) }
+    }
+
+    private fun findInputGlass(host: ViewGroup): View? {
+        for (index in 0 until host.childCount) {
+            val child = host.getChildAt(index)
+            if (child.tag == InputFrameTag) return child
+        }
+        return null
+    }
+
     private fun releaseAll() {
         val panels = managedPanels.toList().filterIsInstance<ViewGroup>()
         val covers = coverViews.toList()
+        val inputs = inputHosts.toList().filterIsInstance<ViewGroup>()
         applyingBackground.set(true)
         panels.forEach { panel ->
             findFrame(panel)?.let { frame -> runCatching { panel.removeView(frame) } }
@@ -264,11 +316,17 @@ object CommentGlassIntegration {
         covers.forEach { view ->
             runCatching { view.setBackground(coverBackgrounds[view]) }
         }
+        inputs.forEach { host ->
+            findInputGlass(host)?.let { glass -> runCatching { host.removeView(glass) } }
+            runCatching { host.setBackground(inputBackgrounds[host]) }
+        }
         applyingBackground.set(false)
         managedPanels.clear()
         panelBackgrounds.clear()
         coverViews.clear()
         coverBackgrounds.clear()
+        inputHosts.clear()
+        inputBackgrounds.clear()
     }
 
     private fun walk(view: View, depth: Int, maxDepth: Int, action: (View) -> Unit) {
